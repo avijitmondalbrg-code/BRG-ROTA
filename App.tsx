@@ -251,6 +251,18 @@ const App: React.FC = () => {
       }]);
     }
   };
+  const handleUpdateEmployee = async (updatedEmp: Employee) => {
+    setEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+    if (isSupabaseConfigured) {
+        await supabase.from('employees').update({
+            name: updatedEmp.name,
+            role: updatedEmp.role,
+            category: updatedEmp.category,
+            default_location_id: updatedEmp.defaultLocationId,
+            preferred_hours: updatedEmp.preferredHours
+        }).eq('id', updatedEmp.id);
+    }
+  };
   const handleRemoveEmployee = async (id: string) => {
     setEmployees(prev => prev.filter(e => e.id !== id));
     if (isSupabaseConfigured) await supabase.from('employees').delete().eq('id', id);
@@ -271,6 +283,14 @@ const App: React.FC = () => {
   const handleAddLocation = async (loc: Location) => {
     setLocations(prev => [...prev, loc]);
     if (isSupabaseConfigured) await supabase.from('locations').insert([loc]);
+  };
+  const handleUpdateLocation = async (updatedLoc: Location) => {
+    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
+    if (isSupabaseConfigured) {
+        await supabase.from('locations').update({
+            name: updatedLoc.name
+        }).eq('id', updatedLoc.id);
+    }
   };
   const handleRemoveLocation = async (id: string) => {
     setLocations(prev => prev.filter(l => l.id !== id));
@@ -376,10 +396,12 @@ const App: React.FC = () => {
             shifts={shifts}
             locations={locations}
             onAddEmployee={handleAddEmployee}
+            onUpdateEmployee={handleUpdateEmployee}
             onRemoveEmployee={handleRemoveEmployee}
             onAddShift={handleAddShift}
             onRemoveShift={handleRemoveShift}
             onAddLocation={handleAddLocation}
+            onUpdateLocation={handleUpdateLocation}
             onRemoveLocation={handleRemoveLocation}
             onSeedData={handleSeedData}
             isDbEmpty={isSupabaseConfigured && locations.length === 0}
