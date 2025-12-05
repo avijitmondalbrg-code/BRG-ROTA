@@ -1,16 +1,19 @@
+
 import React, { useState } from 'react';
 import { Employee, Shift, Location, EMPLOYEE_CATEGORIES } from '../services/types';
-import { Trash2, Plus, User, MapPin, Building2, UploadCloud, Clock } from 'lucide-react';
+import { Trash2, Plus, User, MapPin, Building2, UploadCloud, Clock, Pencil, Check, X } from 'lucide-react';
 
 interface SettingsPanelProps {
   employees: Employee[];
   shifts: Shift[];
   locations: Location[];
   onAddEmployee: (emp: Employee) => void;
+  onUpdateEmployee: (emp: Employee) => void;
   onRemoveEmployee: (id: string) => void;
   onAddShift: (shift: Shift) => void;
   onRemoveShift: (id: string) => void;
   onAddLocation: (loc: Location) => void;
+  onUpdateLocation: (loc: Location) => void;
   onRemoveLocation: (id: string) => void;
   onSeedData?: () => void;
   isDbEmpty?: boolean;
@@ -21,10 +24,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   shifts,
   locations,
   onAddEmployee,
+  onUpdateEmployee,
   onRemoveEmployee,
   onAddShift,
   onRemoveShift,
   onAddLocation,
+  onUpdateLocation,
   onRemoveLocation,
   onSeedData,
   isDbEmpty
@@ -34,6 +39,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [newEmpRole, setNewEmpRole] = useState('');
   const [newEmpCategory, setNewEmpCategory] = useState<typeof EMPLOYEE_CATEGORIES[number]>(EMPLOYEE_CATEGORIES[0]);
   const [newEmpLocationId, setNewEmpLocationId] = useState('');
+  
+  // State for Editing Employee
+  const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
 
   // Shift Form
   const [newShiftName, setNewShiftName] = useState('Day');
@@ -42,21 +50,94 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Location Form
   const [newLocName, setNewLocName] = useState('');
+  // State for Editing Location
+  const [editingLocId, setEditingLocId] = useState<string | null>(null);
 
-  const handleAddEmp = () => {
-    if (!newEmpName || !newEmpRole) return;
-    onAddEmployee({
-      id: Math.random().toString(36).substr(2, 9),
-      name: newEmpName,
-      role: newEmpRole,
-      category: newEmpCategory,
-      defaultLocationId: newEmpLocationId || (locations[0]?.id),
-      preferredHours: 40
-    });
-    setNewEmpName('');
-    setNewEmpRole('');
+  // --- Location Handlers ---
+  const handleAddOrUpdateLocation = () => {
+    if(!newLocName) return;
+    
+    if (editingLocId) {
+        // Update existing
+        const existing = locations.find(l => l.id === editingLocId);
+        if (existing) {
+            onUpdateLocation({ ...existing, name: newLocName });
+        }
+        setEditingLocId(null);
+        setNewLocName('');
+    } else {
+        // Add new
+        onAddLocation({
+            id: Math.random().toString(36).substr(2, 9),
+            name: newLocName,
+            color: 'bg-indigo-50 text-indigo-700'
+        });
+        setNewLocName('');
+    }
+  }
+
+  const startEditLocation = (loc: Location) => {
+      setEditingLocId(loc.id);
+      setNewLocName(loc.name);
   };
 
+  const cancelEditLocation = () => {
+      setEditingLocId(null);
+      setNewLocName('');
+  };
+
+  // --- Employee Handlers ---
+  const handleAddOrUpdateEmp = () => {
+    if (!newEmpName || !newEmpRole) return;
+
+    if (editingEmpId) {
+        // Update existing
+        const existing = employees.find(e => e.id === editingEmpId);
+        if (existing) {
+            onUpdateEmployee({
+                ...existing,
+                name: newEmpName,
+                role: newEmpRole,
+                category: newEmpCategory,
+                defaultLocationId: newEmpLocationId || undefined
+            });
+        }
+        setEditingEmpId(null);
+        setNewEmpName('');
+        setNewEmpRole('');
+        setNewEmpLocationId('');
+    } else {
+        // Add new
+        onAddEmployee({
+            id: Math.random().toString(36).substr(2, 9),
+            name: newEmpName,
+            role: newEmpRole,
+            category: newEmpCategory,
+            defaultLocationId: newEmpLocationId || (locations[0]?.id),
+            preferredHours: 40
+        });
+        setNewEmpName('');
+        setNewEmpRole('');
+    }
+  };
+
+  const startEditEmployee = (emp: Employee) => {
+      setEditingEmpId(emp.id);
+      setNewEmpName(emp.name);
+      setNewEmpRole(emp.role);
+      // @ts-ignore
+      setNewEmpCategory(emp.category);
+      setNewEmpLocationId(emp.defaultLocationId || '');
+  };
+
+  const cancelEditEmployee = () => {
+      setEditingEmpId(null);
+      setNewEmpName('');
+      setNewEmpRole('');
+      setNewEmpLocationId('');
+  };
+
+  // --- Shift Handlers ---
   const handleAddShift = () => {
     if (!newShiftName) return;
     onAddShift({
@@ -68,16 +149,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       color: 'bg-slate-100 text-slate-800 border-slate-200'
     });
   };
-
-  const handleAddLocation = () => {
-    if(!newLocName) return;
-    onAddLocation({
-        id: Math.random().toString(36).substr(2, 9),
-        name: newLocName,
-        color: 'bg-indigo-50 text-indigo-700'
-    });
-    setNewLocName('');
-  }
 
   const getLocationName = (id?: string) => locations.find(l => l.id === id)?.name || 'N/A';
 
@@ -104,13 +175,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <div className="p-4 space-y-4">
                     <div className="flex gap-2">
                         <input className="flex-1 px-3 py-2 border rounded-md text-sm" placeholder="Hospital Name (e.g. Fortis)" value={newLocName} onChange={e => setNewLocName(e.target.value)} />
-                        <button onClick={handleAddLocation} className="bg-indigo-600 text-white px-4 rounded-md text-sm"><Plus size={16}/></button>
+                        {editingLocId ? (
+                             <div className="flex gap-1">
+                                <button onClick={handleAddOrUpdateLocation} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 rounded-md text-sm"><Check size={16}/></button>
+                                <button onClick={cancelEditLocation} className="bg-slate-400 hover:bg-slate-500 text-white px-3 rounded-md text-sm"><X size={16}/></button>
+                             </div>
+                        ) : (
+                            <button onClick={handleAddOrUpdateLocation} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-md text-sm"><Plus size={16}/></button>
+                        )}
                     </div>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                         {locations.map(l => (
-                            <div key={l.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                            <div key={l.id} className={`flex justify-between items-center p-2 rounded border ${editingLocId === l.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
                                 <span className="text-sm font-medium">{l.name}</span>
-                                <button onClick={() => onRemoveLocation(l.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => startEditLocation(l)} className="text-slate-400 hover:text-indigo-600 p-1"><Pencil size={14}/></button>
+                                    <button onClick={() => onRemoveLocation(l.id)} className="text-slate-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -155,7 +236,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         
         <div className="p-4 space-y-4">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 bg-slate-50/50 p-3 rounded-lg border border-slate-100">
+            <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase">{editingEmpId ? 'Edit Employee' : 'Add New Employee'}</span>
+                {editingEmpId && <button onClick={cancelEditEmployee} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1"><X size={12}/> Cancel</button>}
+            </div>
             <div className="flex gap-2">
                 <input className="flex-1 px-3 py-2 border rounded text-sm" placeholder="Name" value={newEmpName} onChange={(e) => setNewEmpName(e.target.value)} />
                 <input className="w-1/3 px-3 py-2 border rounded text-sm" placeholder="Role" value={newEmpRole} onChange={(e) => setNewEmpRole(e.target.value)} />
@@ -169,14 +254,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
             </div>
-            <button onClick={handleAddEmp} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
-                <Plus size={16} /> Add Staff
-            </button>
+            
+            {editingEmpId ? (
+                <button onClick={handleAddOrUpdateEmp} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
+                    <Check size={16} /> Update Staff Details
+                </button>
+            ) : (
+                <button onClick={handleAddOrUpdateEmp} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
+                    <Plus size={16} /> Add Staff
+                </button>
+            )}
           </div>
 
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {employees.map(emp => (
-              <div key={emp.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group">
+              <div key={emp.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${editingEmpId === emp.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}`}>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-slate-800">{emp.name}</span>
@@ -189,9 +281,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </span>
                   </div>
                 </div>
-                <button onClick={() => onRemoveEmployee(emp.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2">
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex items-center gap-1 ml-2">
+                    <button onClick={() => startEditEmployee(emp)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit Details">
+                        <Pencil size={16} />
+                    </button>
+                    <button onClick={() => onRemoveEmployee(emp.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="Remove">
+                        <Trash2 size={16} />
+                    </button>
+                </div>
               </div>
             ))}
           </div>
