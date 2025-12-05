@@ -1,0 +1,5 @@
+{
+  "name": "BRGSmartRota",
+  "description": "An AI-powered weekly staff rota scheduler. Manage employees, define shifts, and let Gemini automatically generate fair and optimized schedules.",
+  "requestFramePermissions": []
+}
