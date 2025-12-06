@@ -425,7 +425,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 grid grid-cols-[auto_1fr_auto] md:grid-cols-3 items-center gap-4">
           <div className="flex justify-start">
              <img src="https://bengalrehabilitationgroup.com/images/brg_logo.png" alt="BRG" className="h-16 w-auto object-contain" />
