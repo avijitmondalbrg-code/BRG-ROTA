@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Employee, Shift, Location, RotaAssignment, DAYS_OF_WEEK } from '../services/types';
 import { Plus, Trash2, X, Building2, MapPin, User, Users, Stethoscope } from 'lucide-react';
@@ -12,6 +13,7 @@ interface RotaGridProps {
   onRemove: (assignmentId: string) => void;
   onUpdateLocation: (assignmentId: string, locationId: string) => void;
   readOnly?: boolean;
+  searchTerm?: string;
 }
 
 export const RotaGrid: React.FC<RotaGridProps> = ({ 
@@ -23,7 +25,8 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
   onAssign, 
   onRemove,
   onUpdateLocation,
-  readOnly = false
+  readOnly = false,
+  searchTerm = ''
 }) => {
   const [activeCell, setActiveCell] = useState<{ dateStr: string; empId: string } | null>(null);
   const [targetLocationId, setTargetLocationId] = useState<string>("");
@@ -57,12 +60,19 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
   const getShift = (shiftId: string) => shifts.find(s => s.id === shiftId);
   const getLocation = (locId: string) => locations.find(l => l.id === locId);
 
+  // Filter Employees Logic (Search by Name or Role)
+  const filteredEmployees = employees.filter(e => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return e.name.toLowerCase().includes(term) || e.role.toLowerCase().includes(term);
+  });
+
   // Group Employees by Category
-  const audiologists = employees
+  const audiologists = filteredEmployees
     .filter(e => e.category === 'Audiologist')
     .sort((a, b) => a.name.localeCompare(b.name));
     
-  const supportStaff = employees
+  const supportStaff = filteredEmployees
     .filter(e => e.category === 'Support Staff')
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -249,6 +259,12 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
     <div className="space-y-4 pb-12">
         {renderTable("Audiologists", audiologists, "bg-indigo-100 text-indigo-800", <Stethoscope size={20}/>)}
         {renderTable("Support Staff", supportStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
+        
+        {audiologists.length === 0 && supportStaff.length === 0 && (
+             <div className="text-center py-12 bg-slate-100 rounded-xl border border-dashed border-slate-300 text-slate-400">
+                {searchTerm ? `No staff matching "${searchTerm}" found.` : 'No staff members found matching criteria.'}
+             </div>
+        )}
     </div>
   );
 };
