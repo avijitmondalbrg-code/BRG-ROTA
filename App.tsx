@@ -33,7 +33,10 @@ import {
   ChevronRight,
   Building2,
   HelpCircle,
-  X
+  X,
+  Key,
+  Filter,
+  Search
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -60,6 +63,9 @@ const App: React.FC = () => {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [assignments, setAssignments] = useState<RotaAssignment[]>([]);
+  
+  // Filter State
+  const [searchTerm, setSearchTerm] = useState('');
   
   // AI State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -375,6 +381,7 @@ const App: React.FC = () => {
             onRemove={handleRemoveAssignment}
             onUpdateLocation={handleUpdateAssignmentLocation}
             readOnly={!isAdmin}
+            searchTerm={searchTerm}
           />
         );
       case ViewMode.HOSPITAL_VIEW:
@@ -477,10 +484,31 @@ const App: React.FC = () => {
           </div>
 
           {(view === ViewMode.GRID || view === ViewMode.HOSPITAL_VIEW) && (
-            <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 p-1">
-              <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronLeft size={20} /></button>
-              <div className="px-4 font-semibold text-slate-800 w-48 text-center">{dateRangeStr}</div>
-              <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronRight size={20} /></button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+               {/* Search / Filter Input - Only show for GRID */}
+               {view === ViewMode.GRID && (
+                  <div className="relative flex items-center bg-white rounded-lg shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                      <div className="pl-3 text-slate-400 pointer-events-none"><Search size={16}/></div>
+                      <input 
+                          type="text"
+                          className="pl-2 pr-8 py-2 text-sm bg-transparent outline-none text-slate-700 w-full md:w-48 placeholder:text-slate-400"
+                          placeholder="Search staff..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                      {searchTerm && (
+                          <button onClick={() => setSearchTerm('')} className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100">
+                              <X size={14}/>
+                          </button>
+                      )}
+                  </div>
+               )}
+
+              <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 p-1 justify-between sm:justify-start">
+                <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronLeft size={20} /></button>
+                <div className="px-4 font-semibold text-slate-800 w-48 text-center">{dateRangeStr}</div>
+                <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronRight size={20} /></button>
+              </div>
             </div>
           )}
         </div>
@@ -517,36 +545,40 @@ const App: React.FC = () => {
             <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                        <Database className="text-indigo-600"/> Setup Database
+                        <Database className="text-indigo-600"/> Setup Guide
                     </h2>
                     <button onClick={() => setShowSetupModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
                 </div>
                 
                 <div className="prose prose-sm text-slate-600">
-                    <p className="mb-4">To enable "Access from Anywhere" and save data permanently, you need to connect a free Supabase database.</p>
+                    <p className="mb-4">To enable "Access from Anywhere" and "AI Features", configure the following:</p>
                     
-                    <ol className="list-decimal pl-4 space-y-3">
+                    <ol className="list-decimal pl-4 space-y-4">
                         <li>
-                            <strong>Create Account:</strong> Go to <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline">supabase.com</a> and create a free project.
-                        </li>
-                        <li>
-                            <strong>Setup Tables:</strong> Go to the <strong>SQL Editor</strong> in Supabase, copy the code from the file <code>db_schema.sql</code> in your project, and run it.
-                        </li>
-                        <li>
-                            <strong>Connect App:</strong> 
+                            <strong>Database (Supabase):</strong>
                             <ul className="list-disc pl-4 mt-1 space-y-1">
-                                <li>Go to Supabase <strong>Settings &gt; API</strong>.</li>
-                                <li>Copy the <strong>Project URL</strong> and <strong>anon public key</strong>.</li>
-                                <li>Create a <code>.env</code> file in your project root:</li>
+                                <li>Create free project at <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline">supabase.com</a>.</li>
+                                <li>Run the code from <code>db_schema.sql</code> in the SQL Editor.</li>
+                                <li>Get URL & Anon Key from Settings &gt; API.</li>
                             </ul>
+                        </li>
+                        <li>
+                            <strong>AI Intelligence (Gemini):</strong>
+                             <ul className="list-disc pl-4 mt-1 space-y-1">
+                                <li>Get free API Key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 underline">Google AI Studio</a>.</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Connect (Create .env file):</strong> 
                             <div className="bg-slate-900 text-slate-50 p-3 rounded-md mt-2 font-mono text-xs overflow-x-auto">
                                 VITE_SUPABASE_URL=your_project_url<br/>
-                                VITE_SUPABASE_KEY=your_anon_key
+                                VITE_SUPABASE_KEY=your_anon_key<br/>
+                                API_KEY=your_gemini_key
                             </div>
                         </li>
                     </ol>
                     <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs">
-                        <strong>Tip:</strong> If deploying to Vercel/Netlify, add these variables in their "Environment Variables" settings.
+                        <strong>Deploying?</strong> If using Vercel, add these same variables in the Vercel Project Settings.
                     </div>
                 </div>
 
