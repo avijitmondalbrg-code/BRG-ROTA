@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Employee, Shift, Location, RotaAssignment, DAYS_OF_WEEK } from '../services/types';
-import { Plus, Trash2, X, Building2, MapPin, Stethoscope, Users, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, X, Building2, MapPin, User, Users, Stethoscope } from 'lucide-react';
 
 interface RotaGridProps {
   weekStart: Date;
@@ -15,17 +15,6 @@ interface RotaGridProps {
   readOnly?: boolean;
   searchTerm?: string;
 }
-
-// Helper to convert "HH:mm" to minutes from midnight
-const getMinutes = (timeStr: string): number => {
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-};
-
-// Helper to check if two ranges overlap
-const doTimesOverlap = (start1: number, end1: number, start2: number, end2: number): boolean => {
-  return start1 < end2 && start2 < end1;
-};
 
 export const RotaGrid: React.FC<RotaGridProps> = ({ 
   weekStart,
@@ -71,24 +60,6 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
   const getShift = (shiftId: string) => shifts.find(s => s.id === shiftId);
   const getLocation = (locId: string) => locations.find(l => l.id === locId);
 
-  // Check for overlap against existing assignments in this cell
-  const checkOverlap = (candidateShift: Shift, existingAssignments: RotaAssignment[]) => {
-    const startA = getMinutes(candidateShift.startTime);
-    const endA = getMinutes(candidateShift.endTime);
-
-    for (const assignment of existingAssignments) {
-      const existingShift = getShift(assignment.shiftId);
-      if (existingShift) {
-        const startB = getMinutes(existingShift.startTime);
-        const endB = getMinutes(existingShift.endTime);
-        if (doTimesOverlap(startA, endA, startB, endB)) {
-          return true; // Overlap detected
-        }
-      }
-    }
-    return false;
-  };
-
   // Filter Employees Logic (Search by Name or Role)
   const filteredEmployees = employees.filter(e => {
     if (!searchTerm) return true;
@@ -119,13 +90,12 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                 <span className="text-xs text-slate-500 font-medium tracking-wide uppercase">{staff.length} Staff Members</span>
              </div>
         </div>
-        
-        {/* Table Container - overflow-x-auto handles horizontal scroll, overflow-y-visible allows sticky headers to work with page scroll */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
-              <thead className="text-xs uppercase bg-slate-50 text-slate-700">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs uppercase border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 font-bold min-w-[200px] sticky left-0 top-24 z-30 bg-slate-50 border-b border-r border-slate-200 shadow-sm">
+                  <th className="px-6 py-4 font-bold min-w-[200px] sticky left-0 z-20 bg-slate-50 text-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                     Employee
                   </th>
                   {weekDates.map((d) => {
@@ -135,7 +105,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                       : 'bg-indigo-50 text-indigo-700 border-b-indigo-100';
                     
                     return (
-                        <th key={d.dateStr} className={`px-4 py-4 min-w-[140px] text-center sticky top-24 z-20 border-b ${headerClass}`}>
+                        <th key={d.dateStr} className={`px-4 py-4 min-w-[140px] text-center ${headerClass}`}>
                           <div className="font-bold">{d.dayName}</div>
                           <div className="text-[10px] opacity-75">{d.dateObj.getDate()}/{d.dateObj.getMonth()+1}</div>
                         </th>
@@ -146,7 +116,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {staff.map((employee) => (
                   <tr key={employee.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-100 shadow-sm">
+                    <td className="px-6 py-4 font-medium text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                       <div className="flex flex-col gap-1.5">
                         <span className="text-sm font-semibold text-slate-800">{employee.name}</span>
                         <div className="flex flex-wrap gap-1">
@@ -168,7 +138,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                       return (
                         <td key={d.dateStr} className="px-2 py-3 relative align-top">
                           {isActive && !readOnly && (
-                            <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-white rounded-lg shadow-xl border border-slate-200 p-3 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 origin-top-left">
+                            <div className="absolute top-full left-0 z-50 mt-1 w-64 bg-white rounded-lg shadow-xl border border-slate-200 p-3 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 origin-top-left">
                                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                                   <span className="text-xs font-semibold text-slate-700">Manage Slot</span>
                                   <button onClick={() => setActiveCell(null)} className="text-slate-400 hover:text-slate-600"><X size={14}/></button>
@@ -200,7 +170,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                                                     </select>
                                                 </div>
                                             </div>
-                                        );
+                                        )
                                     })}
                                 </div>
                                )}
@@ -225,34 +195,18 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
-                                    {shifts.map(s => {
-                                      const isOverlapping = checkOverlap(s, cellAssignments);
-                                      return (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => {
-                                              if (isOverlapping) {
-                                                alert(`Cannot assign ${s.name}: It overlaps with an existing shift on this day.`);
-                                                return;
-                                              }
-                                              onAssign(d.dateStr, employee.id, s.id, targetLocationId);
-                                              setActiveCell(null);
-                                            }}
-                                            className={`text-center px-2 py-2 rounded text-xs border transition-all flex flex-col items-center justify-center gap-1 ${
-                                              isOverlapping 
-                                                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                                                : 'hover:bg-slate-100 hover:border-slate-300 text-slate-600'
-                                            }`}
-                                        >
-                                            <span className="font-medium">{s.name}</span>
-                                            {isOverlapping && (
-                                              <span className="flex items-center gap-0.5 text-[9px] font-bold">
-                                                <AlertTriangle size={8} /> Overlap
-                                              </span>
-                                            )}
-                                        </button>
-                                      );
-                                    })}
+                                    {shifts.map(s => (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => {
+                                          onAssign(d.dateStr, employee.id, s.id, targetLocationId);
+                                          setActiveCell(null);
+                                        }}
+                                        className={`text-center px-2 py-2 rounded text-xs border transition-all hover:bg-slate-100 hover:border-slate-300 text-slate-600`}
+                                    >
+                                        {s.name}
+                                    </button>
+                                    ))}
                                 </div>
                                </div>
                             </div>
@@ -295,6 +249,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
         </div>
       </div>
     );
