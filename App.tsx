@@ -3,7 +3,7 @@ import {
   AppState, 
   Employee, 
   Shift, 
-  Location,
+  Location, 
   RotaAssignment, 
   ViewMode, 
   INITIAL_EMPLOYEES, 
@@ -36,7 +36,9 @@ import {
   X,
   Key,
   Filter,
-  Search
+  Search,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -75,6 +77,11 @@ const App: React.FC = () => {
   
   // Setup Help Modal
   const [showSetupModal, setShowSetupModal] = useState(false);
+
+  // Clear Confirmation Modal State
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearPassword, setClearPassword] = useState('');
+  const [clearError, setClearError] = useState('');
 
   // --- Effects ---
   
@@ -234,22 +241,37 @@ const App: React.FC = () => {
     await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
   }
 
-  const handleClearRota = async () => {
+  // Initial handler to open modal
+  const handleClearRotaRequest = () => {
     if (!isAdmin) return;
-    if (confirm('Clear schedule for THIS WEEK only?')) {
-      // Calculate dates for current week to filter delete
-      const weekDates = [];
-      const d = new Date(currentWeekStart);
-      for(let i=0; i<7; i++) {
+    setShowClearModal(true);
+    setClearPassword('');
+    setClearError('');
+  };
+
+  // Confirm Logic
+  const handleClearRotaConfirm = async () => {
+    if (clearPassword !== 'brrpl1234') {
+        setClearError('Incorrect password. Please try again.');
+        return;
+    }
+
+    // Calculate dates for current week to filter delete
+    const weekDates = [];
+    const d = new Date(currentWeekStart);
+    for(let i=0; i<7; i++) {
         weekDates.push(d.toISOString().split('T')[0]);
         d.setDate(d.getDate() + 1);
-      }
-
-      setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
-
-      if (!isSupabaseConfigured) return;
-      await supabase.from('assignments').delete().in('date', weekDates);
     }
+
+    // Perform Delete
+    setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
+
+    if (isSupabaseConfigured) {
+        await supabase.from('assignments').delete().in('date', weekDates);
+    }
+
+    setShowClearModal(false);
   };
 
   // --- CRUD Handlers (Simplified for brevity) ---
@@ -396,6 +418,7 @@ const App: React.FC = () => {
             onAssign={handleAssign}
             onRemove={handleRemoveAssignment}
             onUpdateLocation={handleUpdateAssignmentLocation}
+            onClear={handleClearRotaRequest}
             readOnly={!isAdmin}
             searchTerm={searchTerm}
           />
@@ -552,6 +575,60 @@ const App: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Clear Confirmation Modal */}
+      {showClearModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200 border-2 border-red-100">
+                <div className="flex flex-col items-center text-center mb-6">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                        <AlertTriangle className="text-red-600" size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900">Clear Weekly Schedule?</h3>
+                    <p className="text-sm text-slate-500 mt-2">
+                        This will remove all assignments for the current week ({dateRangeStr}). This action cannot be undone.
+                    </p>
+                </div>
+                
+                <div className="mb-6">
+                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-2">
+                        Enter Password to Confirm
+                    </label>
+                    <input 
+                        type="password"
+                        autoFocus
+                        className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-slate-900"
+                        placeholder="••••••••"
+                        value={clearPassword}
+                        onChange={(e) => {
+                            setClearPassword(e.target.value);
+                            setClearError('');
+                        }}
+                    />
+                    {clearError && (
+                        <p className="text-red-500 text-xs mt-2 font-medium flex items-center gap-1">
+                            <X size={12}/> {clearError}
+                        </p>
+                    )}
+                </div>
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowClearModal(false)}
+                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleClearRotaConfirm}
+                        className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl shadow-lg shadow-red-200 transition-all transform active:scale-95"
+                    >
+                        Confirm Clear
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
