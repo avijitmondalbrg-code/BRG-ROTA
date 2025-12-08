@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -11,7 +10,7 @@ import {
   INITIAL_SHIFTS, 
   INITIAL_LOCATIONS,
   DAYS_OF_WEEK
-} from './services/types'; // Updated import path to match file structure
+} from './services/types'; 
 import { RotaGrid } from './components/RotaGrid';
 import { StatsPanel } from './components/StatsPanel';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -109,16 +108,17 @@ const App: React.FC = () => {
       // 2. Employees
       const { data: empData } = await supabase.from('employees').select('*');
       if (empData) {
-        setEmployees(empData.map((e: any) => ({
+        // Explicitly map snake_case DB columns to camelCase Employee props
+        const mappedEmployees: Employee[] = empData.map((e: any) => ({
           id: e.id,
           name: e.name,
           role: e.role,
           category: e.category,
-          // CRITICAL FIX: Ensure DB columns (snake_case) map to State props (camelCase)
-          defaultLocationId: e.default_location_id, 
-          preferredHours: Number(e.preferred_hours) || 40,
+          defaultLocationId: e.default_location_id, // Map from DB column
+          preferredHours: Number(e.preferred_hours) || 40, // Map from DB column
           availableDays: e.available_days || DAYS_OF_WEEK
-        })));
+        }));
+        setEmployees(mappedEmployees);
       }
 
       // 3. Shifts
@@ -134,18 +134,20 @@ const App: React.FC = () => {
         })));
       }
 
-      // 4. Assignments (Fetch ALL for now, optimize to range later)
+      // 4. Assignments
       const { data: assignData, error: assignError } = await supabase.from('assignments').select('*');
       if (assignError) throw assignError;
 
       if (assignData) {
-        setAssignments(assignData.map((a: any) => ({
+        // Explicitly map snake_case DB columns to camelCase RotaAssignment props
+        const mappedAssignments: RotaAssignment[] = assignData.map((a: any) => ({
           id: a.id,
           date: a.date,
-          employeeId: a.employee_id,
-          shiftId: a.shift_id,
-          locationId: a.location_id
-        })));
+          employeeId: a.employee_id, // Map from DB column
+          shiftId: a.shift_id,       // Map from DB column
+          locationId: a.location_id  // Map from DB column
+        }));
+        setAssignments(mappedAssignments);
       }
 
     } catch (error: any) {
@@ -261,7 +263,7 @@ const App: React.FC = () => {
         category: emp.category, 
         default_location_id: emp.defaultLocationId, 
         preferred_hours: emp.preferredHours,
-        available_days: emp.availableDays // Save availability
+        available_days: emp.availableDays 
       }]);
     }
   };
@@ -274,7 +276,7 @@ const App: React.FC = () => {
             category: updatedEmp.category,
             default_location_id: updatedEmp.defaultLocationId,
             preferred_hours: updatedEmp.preferredHours,
-            available_days: updatedEmp.availableDays // Update availability
+            available_days: updatedEmp.availableDays 
         }).eq('id', updatedEmp.id);
     }
   };
