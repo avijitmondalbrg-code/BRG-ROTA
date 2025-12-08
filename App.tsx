@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -8,7 +7,7 @@ import {
   RotaAssignment, 
   ViewMode, 
   INITIAL_EMPLOYEES, 
-  INITIAL_SHIFTS,
+  INITIAL_SHIFTS, 
   INITIAL_LOCATIONS,
   DAYS_OF_WEEK
 } from './services/types'; // Updated import path to match file structure
@@ -114,9 +113,9 @@ const App: React.FC = () => {
           name: e.name,
           role: e.role,
           category: e.category,
-          default_location_id: e.default_location_id,
-          preferred_hours: e.preferred_hours,
-          availableDays: e.available_days || DAYS_OF_WEEK // Fetch availability or default to all
+          defaultLocationId: e.default_location_id,
+          preferredHours: Number(e.preferred_hours) || 40,
+          availableDays: e.available_days || DAYS_OF_WEEK
         })));
       }
 
