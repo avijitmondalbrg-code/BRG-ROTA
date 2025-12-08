@@ -90,14 +90,18 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                 <span className="text-xs text-slate-500 font-medium tracking-wide uppercase">{staff.length} Staff Members</span>
              </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase border-b border-slate-200">
+        
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 relative overflow-hidden">
+          {/* Scroll Container for Freeze Panes */}
+          <div className="overflow-auto max-h-[70vh] w-full pb-32">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead className="text-xs uppercase bg-slate-50 text-slate-700">
                 <tr>
-                  <th className="px-6 py-4 font-bold min-w-[200px] sticky left-0 z-20 bg-slate-50 text-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                  {/* Sticky Corner */}
+                  <th className="px-6 py-4 font-bold min-w-[200px] sticky left-0 top-0 z-30 bg-slate-50 border-b border-r border-slate-200 shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.05)]">
                     Employee
                   </th>
+                  {/* Sticky Header Row */}
                   {weekDates.map((d) => {
                     const isSun = d.dayName === 'Sun';
                     const headerClass = isSun 
@@ -105,7 +109,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                       : 'bg-indigo-50 text-indigo-700 border-b-indigo-100';
                     
                     return (
-                        <th key={d.dateStr} className={`px-4 py-4 min-w-[140px] text-center ${headerClass}`}>
+                        <th key={d.dateStr} className={`px-4 py-4 min-w-[140px] text-center sticky top-0 z-20 border-b ${headerClass} shadow-[0_2px_5px_-2px_rgba(0,0,0,0.05)]`}>
                           <div className="font-bold">{d.dayName}</div>
                           <div className="text-[10px] opacity-75">{d.dateObj.getDate()}/{d.dateObj.getMonth()+1}</div>
                         </th>
@@ -116,6 +120,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {staff.map((employee) => (
                   <tr key={employee.id} className="hover:bg-slate-50/50 transition-colors">
+                    {/* Sticky First Column */}
                     <td className="px-6 py-4 font-medium text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                       <div className="flex flex-col gap-1.5">
                         <span className="text-sm font-semibold text-slate-800">{employee.name}</span>
