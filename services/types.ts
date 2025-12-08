@@ -12,6 +12,7 @@ export interface Employee {
   category: 'Audiologist' | 'Support Staff';
   defaultLocationId?: string; // Auto-generated hospital based on post
   preferredHours: number;
+  availableDays?: string[]; // Array of days they can work e.g. ["Mon", "Tue"]
 }
 
 export interface Shift {
@@ -59,9 +60,9 @@ export const INITIAL_LOCATIONS: Location[] = [
 ];
 
 export const INITIAL_EMPLOYEES: Employee[] = [
-  { id: '1', name: 'Alice Johnson', role: 'Manager', category: 'Audiologist', defaultLocationId: 'l1', preferredHours: 40 },
-  { id: '2', name: 'Bob Smith', role: 'Assistant', category: 'Support Staff', defaultLocationId: 'l1', preferredHours: 30 },
-  { id: '3', name: 'Charlie Brown', role: 'Junior Audio', category: 'Audiologist', defaultLocationId: 'l2', preferredHours: 20 },
+  { id: '1', name: 'Alice Johnson', role: 'Manager', category: 'Audiologist', defaultLocationId: 'l1', preferredHours: 40, availableDays: DAYS_OF_WEEK },
+  { id: '2', name: 'Bob Smith', role: 'Assistant', category: 'Support Staff', defaultLocationId: 'l1', preferredHours: 30, availableDays: DAYS_OF_WEEK },
+  { id: '3', name: 'Charlie Brown', role: 'Junior Audio', category: 'Audiologist', defaultLocationId: 'l2', preferredHours: 20, availableDays: ['Mon', 'Wed', 'Fri'] },
 ];
 
 export const INITIAL_SHIFTS: Shift[] = [
