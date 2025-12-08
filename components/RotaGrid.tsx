@@ -11,6 +11,7 @@ interface RotaGridProps {
   onAssign: (date: string, employeeId: string, shiftId: string, locationId?: string) => void;
   onRemove: (assignmentId: string) => void;
   onUpdateLocation: (assignmentId: string, locationId: string) => void;
+  onClear?: () => void;
   readOnly?: boolean;
   searchTerm?: string;
 }
@@ -24,6 +25,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
   onAssign, 
   onRemove,
   onUpdateLocation,
+  onClear,
   readOnly = false,
   searchTerm = ''
 }) => {
@@ -268,6 +270,18 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
 
   return (
     <div className="space-y-4 pb-12">
+        {/* Clear Button */}
+        {!readOnly && onClear && (
+            <div className="flex justify-end px-1 animate-in fade-in slide-in-from-top-2">
+                <button 
+                    onClick={onClear}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-600 bg-white hover:bg-red-50 rounded-lg shadow-sm border border-red-200 transition-all hover:shadow hover:border-red-300"
+                >
+                    <Trash2 size={14} /> Clear This Week
+                </button>
+            </div>
+        )}
+
         {renderTable("Audiologists", audiologists, "bg-indigo-100 text-indigo-800", <Stethoscope size={20}/>)}
         {renderTable("Support Staff", supportStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
         
