@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -113,7 +114,8 @@ const App: React.FC = () => {
           name: e.name,
           role: e.role,
           category: e.category,
-          defaultLocationId: e.default_location_id,
+          // CRITICAL FIX: Ensure DB columns (snake_case) map to State props (camelCase)
+          defaultLocationId: e.default_location_id, 
           preferredHours: Number(e.preferred_hours) || 40,
           availableDays: e.available_days || DAYS_OF_WEEK
         })));
