@@ -4,13 +4,15 @@ import { Employee, Shift, Location, RotaAssignment } from "./types";
 
 const SYSTEM_INSTRUCTION = `
 You are an expert workforce scheduler. You will generate a rota for a specific week defined by dates (YYYY-MM-DD).
-You will receive employees (with default locations), shifts, available locations, and the start date of the week.
+You will receive employees (with default locations and available days), shifts, available locations, and the start date of the week.
 Output a JSON array of assignments.
 Each assignment must include: date (YYYY-MM-DD), employeeId, shiftId, locationId.
+
 Rules:
 1. Use the employee's defaultLocationId for locationId unless told otherwise.
 2. Respect the 7 days provided (Monday to Sunday).
 3. Ensure coverage.
+4. RESPECT EMPLOYEE AVAILABILITY. Do not assign shifts on days not listed in their 'availableDays'.
 `;
 
 export const generateRotaWithAI = async (
@@ -35,7 +37,13 @@ export const generateRotaWithAI = async (
 
   const inputPrompt = `
     Week Dates: ${JSON.stringify(dates)}
-    Employees: ${JSON.stringify(employees)}
+    Employees: ${JSON.stringify(employees.map(e => ({
+        id: e.id,
+        name: e.name,
+        category: e.category,
+        defaultLocationId: e.defaultLocationId,
+        availableDays: e.availableDays
+    })))}
     Shifts: ${JSON.stringify(shifts)}
     Locations: ${JSON.stringify(locations)}
     
