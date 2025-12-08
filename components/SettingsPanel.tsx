@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Employee, Shift, Location, EMPLOYEE_CATEGORIES } from '../services/types';
-import { Trash2, Plus, User, MapPin, Building2, UploadCloud, Clock, Pencil, Check, X } from 'lucide-react';
+import { Employee, Shift, Location, EMPLOYEE_CATEGORIES, DAYS_OF_WEEK } from '../services/types';
+import { Trash2, Plus, User, MapPin, Building2, UploadCloud, Clock, Pencil, Check, X, CalendarCheck } from 'lucide-react';
 
 interface SettingsPanelProps {
   employees: Employee[];
@@ -39,6 +39,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [newEmpRole, setNewEmpRole] = useState('');
   const [newEmpCategory, setNewEmpCategory] = useState<typeof EMPLOYEE_CATEGORIES[number]>(EMPLOYEE_CATEGORIES[0]);
   const [newEmpLocationId, setNewEmpLocationId] = useState('');
+  const [newEmpAvailableDays, setNewEmpAvailableDays] = useState<string[]>(DAYS_OF_WEEK);
   
   // State for Editing Employee
   const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
@@ -87,6 +88,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   // --- Employee Handlers ---
+  const toggleDay = (day: string) => {
+    setNewEmpAvailableDays(prev => 
+      prev.includes(day) 
+        ? prev.filter(d => d !== day) 
+        : [...prev, day]
+    );
+  };
+
   const handleAddOrUpdateEmp = () => {
     if (!newEmpName || !newEmpRole) return;
 
@@ -99,13 +108,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 name: newEmpName,
                 role: newEmpRole,
                 category: newEmpCategory,
-                defaultLocationId: newEmpLocationId || undefined
+                defaultLocationId: newEmpLocationId || undefined,
+                availableDays: newEmpAvailableDays
             });
         }
         setEditingEmpId(null);
         setNewEmpName('');
         setNewEmpRole('');
         setNewEmpLocationId('');
+        setNewEmpAvailableDays(DAYS_OF_WEEK);
     } else {
         // Add new
         onAddEmployee({
@@ -114,10 +125,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             role: newEmpRole,
             category: newEmpCategory,
             defaultLocationId: newEmpLocationId || (locations[0]?.id),
-            preferredHours: 40
+            preferredHours: 40,
+            availableDays: newEmpAvailableDays
         });
         setNewEmpName('');
         setNewEmpRole('');
+        setNewEmpAvailableDays(DAYS_OF_WEEK);
     }
   };
 
@@ -128,6 +141,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       // @ts-ignore
       setNewEmpCategory(emp.category);
       setNewEmpLocationId(emp.defaultLocationId || '');
+      setNewEmpAvailableDays(emp.availableDays || DAYS_OF_WEEK);
   };
 
   const cancelEditEmployee = () => {
@@ -135,6 +149,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setNewEmpName('');
       setNewEmpRole('');
       setNewEmpLocationId('');
+      setNewEmpAvailableDays(DAYS_OF_WEEK);
   };
 
   // --- Shift Handlers ---
@@ -255,15 +270,42 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </select>
             </div>
             
-            {editingEmpId ? (
-                <button onClick={handleAddOrUpdateEmp} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
-                    <Check size={16} /> Update Staff Details
-                </button>
-            ) : (
-                <button onClick={handleAddOrUpdateEmp} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
-                    <Plus size={16} /> Add Staff
-                </button>
-            )}
+            {/* Availability Selector */}
+            <div className="flex flex-col gap-1.5 mt-1">
+                <span className="text-[10px] font-medium text-slate-500 uppercase flex items-center gap-1">
+                    <CalendarCheck size={10} /> Available Days
+                </span>
+                <div className="flex gap-1 flex-wrap">
+                    {DAYS_OF_WEEK.map(day => {
+                        const isSelected = newEmpAvailableDays.includes(day);
+                        return (
+                            <button
+                                key={day}
+                                onClick={() => toggleDay(day)}
+                                className={`px-2 py-1 text-xs rounded border transition-all ${
+                                    isSelected 
+                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200 font-medium' 
+                                    : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                {day}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="mt-2">
+                {editingEmpId ? (
+                    <button onClick={handleAddOrUpdateEmp} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
+                        <Check size={16} /> Update Staff Details
+                    </button>
+                ) : (
+                    <button onClick={handleAddOrUpdateEmp} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors flex items-center justify-center gap-2 text-sm font-medium">
+                        <Plus size={16} /> Add Staff
+                    </button>
+                )}
+            </div>
           </div>
 
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
@@ -277,9 +319,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span className="font-medium bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">{emp.role}</span>
                     <span className="flex items-center gap-1 text-indigo-600">
-                         <Building2 size={10} /> Auto-Location: {getLocationName(emp.defaultLocationId)}
+                         <Building2 size={10} /> {getLocationName(emp.defaultLocationId)}
                     </span>
                   </div>
+                  {/* Show summary of availability if not all days */}
+                  {emp.availableDays && emp.availableDays.length < 7 && (
+                      <div className="mt-1 flex flex-wrap gap-0.5">
+                          {DAYS_OF_WEEK.map(d => (
+                              <span key={d} className={`text-[9px] w-4 h-4 flex items-center justify-center rounded-full ${emp.availableDays?.includes(d) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-300'}`}>
+                                  {d.charAt(0)}
+                              </span>
+                          ))}
+                      </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 ml-2">
                     <button onClick={() => startEditEmployee(emp)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit Details">
