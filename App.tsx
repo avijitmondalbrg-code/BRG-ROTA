@@ -9,7 +9,8 @@ import {
   ViewMode, 
   INITIAL_EMPLOYEES, 
   INITIAL_SHIFTS,
-  INITIAL_LOCATIONS 
+  INITIAL_LOCATIONS,
+  DAYS_OF_WEEK
 } from './services/types'; // Updated import path to match file structure
 import { RotaGrid } from './components/RotaGrid';
 import { StatsPanel } from './components/StatsPanel';
@@ -114,7 +115,8 @@ const App: React.FC = () => {
           role: e.role,
           category: e.category,
           defaultLocationId: e.default_location_id,
-          preferredHours: e.preferred_hours
+          preferredHours: e.preferred_hours,
+          availableDays: e.available_days || DAYS_OF_WEEK // Fetch availability or default to all
         })));
       }
 
@@ -252,8 +254,13 @@ const App: React.FC = () => {
     setEmployees(prev => [...prev, emp]);
     if (isSupabaseConfigured) {
       await supabase.from('employees').insert([{
-        id: emp.id, name: emp.name, role: emp.role, category: emp.category, 
-        default_location_id: emp.defaultLocationId, preferred_hours: emp.preferredHours
+        id: emp.id, 
+        name: emp.name, 
+        role: emp.role, 
+        category: emp.category, 
+        default_location_id: emp.defaultLocationId, 
+        preferred_hours: emp.preferredHours,
+        available_days: emp.availableDays // Save availability
       }]);
     }
   };
@@ -265,7 +272,8 @@ const App: React.FC = () => {
             role: updatedEmp.role,
             category: updatedEmp.category,
             default_location_id: updatedEmp.defaultLocationId,
-            preferred_hours: updatedEmp.preferredHours
+            preferred_hours: updatedEmp.preferredHours,
+            available_days: updatedEmp.availableDays // Update availability
         }).eq('id', updatedEmp.id);
     }
   };
@@ -313,8 +321,13 @@ const App: React.FC = () => {
 
       // Seed Employees
       await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
-        id: e.id, name: e.name, role: e.role, category: e.category, 
-        default_location_id: e.defaultLocationId, preferred_hours: e.preferredHours
+        id: e.id, 
+        name: e.name, 
+        role: e.role, 
+        category: e.category, 
+        default_location_id: e.defaultLocationId, 
+        preferred_hours: e.preferredHours,
+        available_days: e.availableDays
       })));
       setEmployees(INITIAL_EMPLOYEES);
 
