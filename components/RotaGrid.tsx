@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, Shift, Location, RotaAssignment, DAYS_OF_WEEK } from '../services/types';
 import { Plus, Trash2, X, Building2, MapPin, User, Users, Stethoscope } from 'lucide-react';
 
@@ -41,19 +40,24 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
     }
   }, [activeCell, employees, locations]);
 
-  // Generate 7 days starting from weekStart
-  const weekDates: { dateObj: Date; dateStr: string; dayName: string }[] = [];
-  const tempDate = new Date(weekStart);
-  for (let i = 0; i < 7; i++) {
-    weekDates.push({
-      dateObj: new Date(tempDate),
-      dateStr: tempDate.toISOString().split('T')[0],
-      dayName: DAYS_OF_WEEK[i]
-    });
-    tempDate.setDate(tempDate.getDate() + 1);
-  }
+  // Generate 7 days starting from weekStart using robust date handling
+  const weekDates = useMemo(() => {
+    const dates: { dateObj: Date; dateStr: string; dayName: string }[] = [];
+    const tempDate = new Date(weekStart);
+    for (let i = 0; i < 7; i++) {
+        dates.push({
+            dateObj: new Date(tempDate),
+            dateStr: tempDate.toISOString().split('T')[0],
+            // Use locale for day name instead of array index to be safe against offset changes
+            dayName: tempDate.toLocaleDateString('en-GB', { weekday: 'short' }) 
+        });
+        tempDate.setDate(tempDate.getDate() + 1);
+    }
+    return dates;
+  }, [weekStart]);
 
   const getCellAssignments = (dateStr: string, empId: string) => {
+    if (!assignments) return [];
     return assignments.filter(a => a.date === dateStr && a.employeeId === empId);
   };
 
@@ -61,20 +65,22 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
   const getLocation = (locId: string) => locations.find(l => l.id === locId);
 
   // Filter Employees Logic (Search by Name or Role)
-  const filteredEmployees = employees.filter(e => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return e.name.toLowerCase().includes(term) || e.role.toLowerCase().includes(term);
-  });
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(e => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return e.name.toLowerCase().includes(term) || e.role.toLowerCase().includes(term);
+    });
+  }, [employees, searchTerm]);
 
   // Group Employees by Category
-  const audiologists = filteredEmployees
+  const audiologists = useMemo(() => filteredEmployees
     .filter(e => e.category === 'Audiologist')
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name)), [filteredEmployees]);
     
-  const supportStaff = filteredEmployees
+  const supportStaff = useMemo(() => filteredEmployees
     .filter(e => e.category === 'Support Staff')
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name)), [filteredEmployees]);
 
   const renderTable = (title: string, staff: Employee[], titleColorClass?: string, icon?: React.ReactNode) => {
     if (staff.length === 0) return null;
