@@ -5,11 +5,13 @@ export interface Location {
   color: string;
 }
 
+export const EMPLOYEE_CATEGORIES = ['Audiologist', 'Admin', 'Support Staff', 'Tele Caller/Receptionist'] as const;
+
 export interface Employee {
   id: string;
   name: string;
   role: string;
-  category: 'Audiologist' | 'Support Staff';
+  category: typeof EMPLOYEE_CATEGORIES[number];
   defaultLocationId?: string; // Auto-generated hospital based on post
   preferredHours: number;
   availableDays?: string[]; // Array of days they can work e.g. ["Mon", "Tue"]
@@ -48,8 +50,6 @@ export enum ViewMode {
 }
 
 export const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-export const EMPLOYEE_CATEGORIES = ['Audiologist', 'Support Staff'] as const;
 
 // Initial Data for Seeding
 export const INITIAL_LOCATIONS: Location[] = [
