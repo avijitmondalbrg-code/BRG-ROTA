@@ -283,7 +283,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
         )}
 
         {renderTable("Audiologists", audiologists, "bg-indigo-100 text-indigo-800", <Stethoscope size={20}/>)}
-        {renderTable("Support Staff", supportStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
+        {renderTable("Admin & Support Staff", supportStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
         
         {audiologists.length === 0 && supportStaff.length === 0 && (
              <div className="text-center py-12 bg-slate-100 rounded-xl border border-dashed border-slate-300 text-slate-400">
