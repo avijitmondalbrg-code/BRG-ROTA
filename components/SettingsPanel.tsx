@@ -245,7 +245,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-            <User size={18} /> Staff Members
+            <User size={18} /> BRGians / Members (Add/Edit) 
           </h3>
           <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded border">{employees.length} Total</span>
         </div>
