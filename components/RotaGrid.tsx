@@ -80,8 +80,9 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
     .filter(e => e.category === 'Audiologist')
     .sort((a, b) => a.name.localeCompare(b.name)), [filteredEmployees]);
     
-  const supportStaff = useMemo(() => filteredEmployees
-    .filter(e => e.category === 'Support Staff')
+  // Combine all other categories (Admin, Support Staff, Tele Caller) into the second group
+  const otherStaff = useMemo(() => filteredEmployees
+    .filter(e => e.category !== 'Audiologist')
     .sort((a, b) => a.name.localeCompare(b.name)), [filteredEmployees]);
 
   const renderTable = (title: string, staff: Employee[], titleColorClass?: string, icon?: React.ReactNode) => {
@@ -155,7 +156,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                                   <span className="text-xs font-semibold text-slate-700">Manage Slot</span>
                                   <button onClick={() => setActiveCell(null)} className="text-slate-400 hover:text-slate-600"><X size={14}/></button>
-                               </div>
+                                </div>
 
                                {/* Existing Assignments */}
                                {cellAssignments.length > 0 && (
@@ -283,9 +284,9 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
         )}
 
         {renderTable("Audiologists", audiologists, "bg-indigo-100 text-indigo-800", <Stethoscope size={20}/>)}
-        {renderTable("Admin & Support Staff", supportStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
+        {renderTable("Admin & Support Staff", otherStaff, "bg-emerald-100 text-emerald-800", <Users size={20}/>)}
         
-        {audiologists.length === 0 && supportStaff.length === 0 && (
+        {audiologists.length === 0 && otherStaff.length === 0 && (
              <div className="text-center py-12 bg-slate-100 rounded-xl border border-dashed border-slate-300 text-slate-400">
                 {searchTerm ? `No staff matching "${searchTerm}" found.` : 'No staff members found matching criteria.'}
              </div>
