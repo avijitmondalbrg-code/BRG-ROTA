@@ -229,7 +229,7 @@ export const HospitalView: React.FC<HospitalViewProps> = ({
                                   <div className="font-bold text-slate-800 text-xs leading-tight group-hover:text-indigo-700">{item.emp?.name}</div>
                                   <div className="flex flex-wrap gap-1 mt-1">
                                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md ${
-                                      item.emp?.category === 'Audiologist' 
+                                      item.emp?.category === 'Hospitals / Locations' 
                                       ? 'bg-indigo-50 text-indigo-600' 
                                       : 'bg-emerald-50 text-emerald-600'
                                     }`}>
