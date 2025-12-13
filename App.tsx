@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -34,7 +33,8 @@ import {
   X,
   Search,
   AlertTriangle,
-  Info
+  Info,
+  Terminal
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -206,7 +206,7 @@ const App: React.FC = () => {
       }]);
       if (error) throw error;
     } catch (error: any) {
-      setDbError(`Failed to save assignment: ${error.message}`);
+      setDbError(`Failed to save: ${error.message}`);
       setAssignments(prev => prev.filter(a => a.id !== newAssignment.id));
     }
   };
@@ -220,7 +220,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
       if (error) throw error;
     } catch (error: any) {
-      setDbError(`Failed to delete: ${error.message}`);
+      setDbError(`Delete failed: ${error.message}`);
       setAssignments(prevAssignments);
     }
   };
@@ -281,7 +281,6 @@ const App: React.FC = () => {
           category: emp.category, 
           default_location_id: emp.defaultLocationId, 
           preferred_hours: emp.preferredHours,
-          // Use availableDays instead of available_days for Employee type
           available_days: emp.availableDays 
         }]);
         if (error) throw error;
@@ -303,7 +302,6 @@ const App: React.FC = () => {
                 category: updatedEmp.category,
                 default_location_id: updatedEmp.defaultLocationId,
                 preferred_hours: updatedEmp.preferredHours,
-                // Use availableDays instead of available_days for Employee type
                 available_days: updatedEmp.availableDays 
             }).eq('id', updatedEmp.id);
             if (error) throw error;
@@ -412,7 +410,6 @@ const App: React.FC = () => {
         category: e.category, 
         default_location_id: e.defaultLocationId, 
         preferred_hours: e.preferredHours,
-        // Use availableDays instead of available_days for Employee type
         available_days: e.availableDays
       })));
       setEmployees(INITIAL_EMPLOYEES);
@@ -508,7 +505,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
       {dbError && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4">
            <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border-b-4 border-red-800">
               <div className="flex items-center gap-3">
                  <AlertTriangle size={20} className="shrink-0" />
@@ -536,7 +533,7 @@ const App: React.FC = () => {
                {isSupabaseConfigured ? (
                   <span className="text-[10px] text-green-600 flex items-center gap-1 font-medium"><Database size={10}/> Database Connected</span>
                ) : (
-                  <span className="text-[10px] text-orange-500 flex items-center gap-1 font-medium"><WifiOff size={10}/> Not Configured (Demo Mode)</span>
+                  <span className="text-[10px] text-orange-500 flex items-center gap-1 font-medium"><WifiOff size={10}/> Connection Issue / Demo</span>
                )}
              </button>
           </div>
@@ -600,7 +597,7 @@ const App: React.FC = () => {
 
       {showAiModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2"><Sparkles className="text-indigo-600"/> AI Scheduler</h2>
             <p className="text-sm text-slate-500 mb-4">Generates plan for: {dateRangeStr}</p>
             <textarea className="w-full h-32 p-3 border rounded-xl text-sm mb-4 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. Alice needs Tuesday off..." value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} />
@@ -614,12 +611,12 @@ const App: React.FC = () => {
       )}
 
       {showClearModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200 border-2 border-red-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border-2 border-red-100">
                 <div className="flex flex-col items-center text-center mb-6">
                     <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4"><AlertTriangle className="text-red-600" size={24} /></div>
                     <h3 className="text-lg font-bold text-slate-900">Clear Weekly Schedule?</h3>
-                    <p className="text-sm text-slate-500 mt-2">This will remove all assignments for the current week ({dateRangeStr}). This action cannot be undone.</p>
+                    <p className="text-sm text-slate-500 mt-2">This will remove all assignments for the current week. This action cannot be undone.</p>
                 </div>
                 <div className="mb-6">
                     <label className="block text-xs font-semibold text-slate-700 uppercase mb-2">Enter Password to Confirm</label>
@@ -636,31 +633,47 @@ const App: React.FC = () => {
 
       {showSetupModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><Database className="text-indigo-600"/> Setup Guide</h2>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><Database className="text-indigo-600"/> Database Setup Guide</h2>
                     <button onClick={() => setShowSetupModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
                 </div>
-                <div className="prose prose-sm text-slate-600">
-                    <p className="mb-4">To fix data persistence (data not saving), ensure your server has these variables configured:</p>
-                    <div className="bg-slate-900 text-slate-50 p-4 rounded-xl mb-6 font-mono text-xs leading-relaxed border-l-4 border-indigo-500">
-                        VITE_SUPABASE_URL=your_project_url<br/>
-                        VITE_SUPABASE_KEY=your_anon_key<br/>
-                        VITE_GEMINI_API_KEY=your_gemini_key
-                    </div>
-                    <div className="space-y-4">
-                        <div className="flex gap-3">
-                            <div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg h-fit"><Info size={16}/></div>
-                            <p className="text-xs">If using <strong>Vercel</strong>, you must add these in <i>Project Settings &gt; Environment Variables</i> and re-deploy.</p>
+                
+                <div className="space-y-6">
+                    <section>
+                        <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
+                            <Terminal size={16}/> 1. Fix Missing Database Column
+                        </h3>
+                        <p className="text-xs text-slate-600 mb-3">If you get an error "Could not find the available_days column", run this in your Supabase SQL Editor:</p>
+                        <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-indigo-500 relative">
+                            <pre className="whitespace-pre-wrap">ALTER TABLE employees ADD COLUMN IF NOT EXISTS available_days text[] DEFAULT '{"{Mon,Tue,Wed,Thu,Fri,Sat,Sun}"}';</pre>
                         </div>
-                        <div className="flex gap-3">
-                            <div className="bg-amber-100 text-amber-600 p-2 rounded-lg h-fit"><AlertTriangle size={16}/></div>
-                            <p className="text-xs"><strong>Supabase RLS:</strong> Ensure your tables have Row Level Security policies allowing anonymous access, or data saves will be rejected.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
+                            <Info size={16}/> 2. Environment Variables
+                        </h3>
+                        <p className="text-xs text-slate-600 mb-2">Ensure your server/Vercel settings have these exact keys:</p>
+                        <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-emerald-500">
+                            VITE_SUPABASE_URL=your_project_url<br/>
+                            VITE_SUPABASE_KEY=your_anon_key<br/>
+                            VITE_GEMINI_API_KEY=your_gemini_key
+                        </div>
+                    </section>
+
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex gap-3 items-start">
+                        <AlertTriangle className="text-amber-600 shrink-0" size={16} />
+                        <div className="text-xs text-amber-800">
+                            <strong>Supabase RLS Policy:</strong> If data still doesn't save, ensure you have enabled a policy for "Enable access to all users" on the employees and assignments tables.
                         </div>
                     </div>
                 </div>
+
                 <div className="mt-8 flex justify-end">
-                    <button onClick={() => setShowSetupModal(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg shadow-indigo-100 transition-all">Got it!</button>
+                    <button onClick={() => setShowSetupModal(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all">
+                        Got it!
+                    </button>
                 </div>
             </div>
         </div>
