@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -38,7 +39,8 @@ import {
   Filter,
   Search,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -49,6 +51,7 @@ const App: React.FC = () => {
 
   const [view, setView] = useState<ViewMode>(ViewMode.GRID);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Date State (Monday of the current week)
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
@@ -94,8 +97,17 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
+  // Auto-clear error after 5 seconds
+  useEffect(() => {
+    if (dbError) {
+      const timer = setTimeout(() => setDbError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [dbError]);
+
   const fetchData = async () => {
     setIsLoading(true);
+    setDbError(null);
     
     if (!isSupabaseConfigured) {
       console.log("Running in offline mode with demo data");
@@ -109,27 +121,29 @@ const App: React.FC = () => {
 
     try {
       // 1. Locations
-      const { data: locData } = await supabase.from('locations').select('*');
+      const { data: locData, error: locErr } = await supabase.from('locations').select('*');
+      if (locErr) throw locErr;
       if (locData) setLocations(locData);
 
       // 2. Employees
-      const { data: empData } = await supabase.from('employees').select('*');
+      const { data: empData, error: empErr } = await supabase.from('employees').select('*');
+      if (empErr) throw empErr;
       if (empData) {
-        // Explicitly map snake_case DB columns to camelCase Employee props
         const mappedEmployees: Employee[] = empData.map((e: any) => ({
           id: e.id,
           name: e.name,
           role: e.role,
           category: e.category,
-          defaultLocationId: e.default_location_id, // Map from DB column
-          preferredHours: Number(e.preferred_hours) || 40, // Map from DB column
+          defaultLocationId: e.default_location_id,
+          preferredHours: Number(e.preferred_hours) || 40,
           availableDays: e.available_days || DAYS_OF_WEEK
         }));
         setEmployees(mappedEmployees);
       }
 
       // 3. Shifts
-      const { data: shiftData } = await supabase.from('shifts').select('*');
+      const { data: shiftData, error: shiftErr } = await supabase.from('shifts').select('*');
+      if (shiftErr) throw shiftErr;
       if (shiftData) {
         setShifts(shiftData.map((s: any) => ({
           id: s.id,
@@ -146,36 +160,34 @@ const App: React.FC = () => {
       if (assignError) throw assignError;
 
       if (assignData) {
-        // Explicitly map snake_case DB columns to camelCase RotaAssignment props
         const mappedAssignments: RotaAssignment[] = assignData.map((a: any) => ({
           id: a.id,
           date: a.date,
-          employeeId: a.employee_id, // Map from DB column
-          shiftId: a.shift_id,       // Map from DB column
-          locationId: a.location_id  // Map from DB column
+          employeeId: a.employee_id,
+          shiftId: a.shift_id,
+          locationId: a.location_id
         }));
         setAssignments(mappedAssignments);
       }
 
     } catch (error: any) {
       console.error('Error fetching data:', error);
-      if (error.code === '42P01') {
-        // Table not found
-        console.warn("Tables not found. Prompting setup.");
-      }
+      setDbError(`Database Fetch Failed: ${error.message || 'Check connection or RLS policies'}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- Date Navigation ---
-  const changeWeek = (weeks: number) => {
-    const newDate = new Date(currentWeekStart);
-    newDate.setDate(newDate.getDate() + (weeks * 7));
-    setCurrentWeekStart(newDate);
-  };
-
   // --- Actions ---
+
+  // Fix: Added missing changeWeek function to handle date navigation
+  const changeWeek = (offset: number) => {
+    setCurrentWeekStart(prev => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() + (offset * 7));
+      return next;
+    });
+  };
 
   const handleLogin = () => {
     const pwd = prompt("Enter Admin Password:");
@@ -186,13 +198,9 @@ const App: React.FC = () => {
   const handleAssign = async (dateStr: string, employeeId: string, shiftId: string, locationId?: string) => {
     if (!isAdmin) return;
     
-    // Find default location for this employee to "Automatically generate hospital entry"
     const emp = employees.find(e => e.id === employeeId);
-    
-    // Priority: Explicitly selected location > Employee Default > First available location
     const defaultLoc = locationId || emp?.defaultLocationId || (locations.length > 0 ? locations[0].id : '');
 
-    // Check duplicates locally
     const exists = assignments.some(a => a.date === dateStr && a.employeeId === employeeId && a.shiftId === shiftId);
     if (exists) return;
 
@@ -201,23 +209,28 @@ const App: React.FC = () => {
       date: dateStr, 
       employeeId, 
       shiftId,
-      locationId: defaultLoc // Auto-assign default location
+      locationId: defaultLoc
     };
 
+    // Optimistic Update
     setAssignments(prev => [...prev, newAssignment]);
 
     if (!isSupabaseConfigured) return;
 
-    const { error } = await supabase.from('assignments').insert([{
-      id: newAssignment.id,
-      date: dateStr,
-      employee_id: employeeId,
-      shift_id: shiftId,
-      location_id: defaultLoc
-    }]);
+    try {
+      const { error } = await supabase.from('assignments').insert([{
+        id: newAssignment.id,
+        date: dateStr,
+        employee_id: employeeId,
+        shift_id: shiftId,
+        location_id: defaultLoc
+      }]);
 
-    if (error) {
+      if (error) throw error;
+    } catch (error: any) {
       console.error('Error assigning:', error);
+      setDbError(`Failed to save assignment: ${error.message}`);
+      // Rollback local state
       setAssignments(prev => prev.filter(a => a.id !== newAssignment.id));
     }
   };
@@ -229,19 +242,30 @@ const App: React.FC = () => {
 
     if (!isSupabaseConfigured) return;
 
-    const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
-    if (error) setAssignments(prevAssignments);
+    try {
+      const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Delete failed:', error);
+      setDbError(`Failed to delete: ${error.message}`);
+      setAssignments(prevAssignments);
+    }
   };
 
   const handleUpdateAssignmentLocation = async (assignmentId: string, locationId: string) => {
-    // Optimistic
+    const prevAssignments = [...assignments];
     setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, locationId } : a));
 
     if (!isSupabaseConfigured) return;
-    await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
+    try {
+      const { error } = await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
+      if (error) throw error;
+    } catch (error: any) {
+      setDbError(`Update failed: ${error.message}`);
+      setAssignments(prevAssignments);
+    }
   }
 
-  // Initial handler to open modal
   const handleClearRotaRequest = () => {
     if (!isAdmin) return;
     setShowClearModal(true);
@@ -249,14 +273,12 @@ const App: React.FC = () => {
     setClearError('');
   };
 
-  // Confirm Logic
   const handleClearRotaConfirm = async () => {
     if (clearPassword !== 'brrpl1234') {
         setClearError('Incorrect password. Please try again.');
         return;
     }
 
-    // Calculate dates for current week to filter delete
     const weekDates = [];
     const d = new Date(currentWeekStart);
     for(let i=0; i<7; i++) {
@@ -264,87 +286,158 @@ const App: React.FC = () => {
         d.setDate(d.getDate() + 1);
     }
 
-    // Perform Delete
+    const prevAssignments = [...assignments];
     setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
 
     if (isSupabaseConfigured) {
-        await supabase.from('assignments').delete().in('date', weekDates);
+        try {
+            const { error } = await supabase.from('assignments').delete().in('date', weekDates);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Clear failed: ${error.message}`);
+            setAssignments(prevAssignments);
+        }
     }
 
     setShowClearModal(false);
   };
 
-  // --- CRUD Handlers (Simplified for brevity) ---
   const handleAddEmployee = async (emp: Employee) => {
     setEmployees(prev => [...prev, emp]);
     if (isSupabaseConfigured) {
-      await supabase.from('employees').insert([{
-        id: emp.id, 
-        name: emp.name, 
-        role: emp.role, 
-        category: emp.category, 
-        default_location_id: emp.defaultLocationId, 
-        preferred_hours: emp.preferredHours,
-        available_days: emp.availableDays 
-      }]);
+      try {
+        const { error } = await supabase.from('employees').insert([{
+          id: emp.id, 
+          name: emp.name, 
+          role: emp.role, 
+          category: emp.category, 
+          default_location_id: emp.defaultLocationId, 
+          preferred_hours: emp.preferredHours,
+          available_days: emp.availableDays 
+        }]);
+        if (error) throw error;
+      } catch (error: any) {
+        setDbError(`Staff Add Failed: ${error.message}`);
+        setEmployees(prev => prev.filter(e => e.id !== emp.id));
+      }
     }
   };
+
   const handleUpdateEmployee = async (updatedEmp: Employee) => {
+    const prev = [...employees];
     setEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
     if (isSupabaseConfigured) {
-        await supabase.from('employees').update({
-            name: updatedEmp.name,
-            role: updatedEmp.role,
-            category: updatedEmp.category,
-            default_location_id: updatedEmp.defaultLocationId,
-            preferred_hours: updatedEmp.preferredHours,
-            available_days: updatedEmp.availableDays 
-        }).eq('id', updatedEmp.id);
+        try {
+            const { error } = await supabase.from('employees').update({
+                name: updatedEmp.name,
+                role: updatedEmp.role,
+                category: updatedEmp.category,
+                default_location_id: updatedEmp.defaultLocationId,
+                preferred_hours: updatedEmp.preferredHours,
+                available_days: updatedEmp.availableDays 
+            }).eq('id', updatedEmp.id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Update failed: ${error.message}`);
+            setEmployees(prev);
+        }
     }
   };
+
   const handleRemoveEmployee = async (id: string) => {
+    const prev = [...employees];
     setEmployees(prev => prev.filter(e => e.id !== id));
-    if (isSupabaseConfigured) await supabase.from('employees').delete().eq('id', id);
+    if (isSupabaseConfigured) {
+        try {
+            const { error } = await supabase.from('employees').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setEmployees(prev);
+        }
+    }
   };
 
   const handleAddShift = async (shift: Shift) => {
     setShifts(prev => [...prev, shift]);
-    if (isSupabaseConfigured) await supabase.from('shifts').insert([{
-       id: shift.id, name: shift.name, color: shift.color, 
-       start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
-    }]);
+    if (isSupabaseConfigured) {
+        try {
+            const { error } = await supabase.from('shifts').insert([{
+                id: shift.id, name: shift.name, color: shift.color, 
+                start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
+            }]);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Shift Add Failed: ${error.message}`);
+            setShifts(prev => prev.filter(s => s.id !== shift.id));
+        }
+    }
   };
+
   const handleRemoveShift = async (id: string) => {
+    const prev = [...shifts];
     setShifts(prev => prev.filter(s => s.id !== id));
-    if (isSupabaseConfigured) await supabase.from('shifts').delete().eq('id', id);
+    if (isSupabaseConfigured) {
+        try {
+            const { error } = await supabase.from('shifts').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setShifts(prev);
+        }
+    }
   };
 
   const handleAddLocation = async (loc: Location) => {
     setLocations(prev => [...prev, loc]);
-    if (isSupabaseConfigured) await supabase.from('locations').insert([loc]);
-  };
-  const handleUpdateLocation = async (updatedLoc: Location) => {
-    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
     if (isSupabaseConfigured) {
-        await supabase.from('locations').update({
-            name: updatedLoc.name
-        }).eq('id', updatedLoc.id);
+        try {
+            const { error } = await supabase.from('locations').insert([loc]);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Location Add Failed: ${error.message}`);
+            setLocations(prev => prev.filter(l => l.id !== loc.id));
+        }
     }
   };
+
+  const handleUpdateLocation = async (updatedLoc: Location) => {
+    const prev = [...locations];
+    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
+    if (isSupabaseConfigured) {
+        try {
+            const { error } = await supabase.from('locations').update({
+                name: updatedLoc.name
+            }).eq('id', updatedLoc.id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Update failed: ${error.message}`);
+            setLocations(prev);
+        }
+    }
+  };
+
   const handleRemoveLocation = async (id: string) => {
+    const prev = [...locations];
     setLocations(prev => prev.filter(l => l.id !== id));
-    if (isSupabaseConfigured) await supabase.from('locations').delete().eq('id', id);
+    if (isSupabaseConfigured) {
+        try {
+            const { error } = await supabase.from('locations').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setLocations(prev);
+        }
+    }
   };
 
   const handleSeedData = async () => {
     if (!isSupabaseConfigured) return;
     setIsLoading(true);
     try {
-      // Seed Locations First
       await supabase.from('locations').insert(INITIAL_LOCATIONS);
       setLocations(INITIAL_LOCATIONS);
 
-      // Seed Employees
       await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
         id: e.id, 
         name: e.name, 
@@ -352,11 +445,10 @@ const App: React.FC = () => {
         category: e.category, 
         default_location_id: e.defaultLocationId, 
         preferred_hours: e.preferredHours,
-        available_days: e.availableDays
+        available_days: e.available_days
       })));
       setEmployees(INITIAL_EMPLOYEES);
 
-      // Seed Shifts
       await supabase.from('shifts').insert(INITIAL_SHIFTS.map(s => ({
         id: s.id, name: s.name, color: s.color, 
         start_time: s.startTime, end_time: s.endTime, hours: s.hours
@@ -366,7 +458,7 @@ const App: React.FC = () => {
       alert("Demo data uploaded!");
     } catch (e: any) {
       console.error(e);
-      alert("Error seeding: " + e.message);
+      setDbError("Error seeding: " + e.message);
     } finally {
       setIsLoading(false);
     }
@@ -377,7 +469,6 @@ const App: React.FC = () => {
     setIsGenerating(true);
     setErrorMsg(null);
     try {
-      // Pass the current week start to AI so it generates correct dates
       const newAssignments = await generateRotaWithAI(employees, shifts, locations, aiPrompt, currentWeekStart);
       
       setAssignments(prev => [...prev, ...newAssignments]);
@@ -457,13 +548,34 @@ const App: React.FC = () => {
     }
   };
 
-  // Header Date String
   const weekEnd = new Date(currentWeekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
   const dateRangeStr = `${currentWeekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
+      {/* DB Error Notification */}
+      {dbError && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4 animate-in fade-in slide-in-from-top-4">
+           <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border-b-4 border-red-800">
+              <div className="flex items-center gap-3">
+                 <AlertTriangle size={20} className="shrink-0" />
+                 <span className="text-sm font-medium">{dbError}</span>
+              </div>
+              <button onClick={() => setDbError(null)} className="p-1 hover:bg-white/10 rounded-full">
+                 <X size={18} />
+              </button>
+           </div>
+        </div>
+      )}
+
+      {/* Persistence Warning */}
+      {!isSupabaseConfigured && !isLoading && (
+        <div className="bg-amber-600 text-white text-[11px] py-1.5 px-4 text-center font-bold tracking-wider uppercase animate-pulse flex items-center justify-center gap-2">
+            <WifiOff size={14}/> Demo Mode: Data will not be saved. Configure Supabase for persistence.
+        </div>
+      )}
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 grid grid-cols-[auto_1fr_auto] md:grid-cols-3 items-center gap-4">
           <div className="flex justify-start">
@@ -480,7 +592,7 @@ const App: React.FC = () => {
                {isSupabaseConfigured ? (
                   <span className="text-[10px] text-green-600 flex items-center gap-1 font-medium"><Database size={10}/> Database Connected</span>
                ) : (
-                  <span className="text-[10px] text-orange-500 flex items-center gap-1 font-medium"><WifiOff size={10}/> Demo Mode (Click to Setup)</span>
+                  <span className="text-[10px] text-orange-500 flex items-center gap-1 font-medium"><WifiOff size={10}/> Not Configured (Demo Mode)</span>
                )}
              </button>
           </div>
@@ -524,7 +636,6 @@ const App: React.FC = () => {
 
           {(view === ViewMode.GRID || view === ViewMode.HOSPITAL_VIEW) && (
             <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-               {/* Search / Filter Input - Only show for GRID */}
                {view === ViewMode.GRID && (
                   <div className="relative flex items-center bg-white rounded-lg shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
                       <div className="pl-3 text-slate-400 pointer-events-none"><Search size={16}/></div>
@@ -644,40 +755,29 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="prose prose-sm text-slate-600">
-                    <p className="mb-4">To enable "Access from Anywhere" and "AI Features", configure the following:</p>
+                    <p className="mb-4">To fix data persistence (data not saving), ensure your server has these variables configured:</p>
                     
-                    <ol className="list-decimal pl-4 space-y-4">
-                        <li>
-                            <strong>Database (Supabase):</strong>
-                            <ul className="list-disc pl-4 mt-1 space-y-1">
-                                <li>Create free project at <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline">supabase.com</a>.</li>
-                                <li>Run the code from <code>db_schema.sql</code> in the SQL Editor.</li>
-                                <li>Get URL & Anon Key from Settings &gt; API.</li>
-                            </ul>
-                        </li>
-                        <li>
-                            <strong>AI Intelligence (Gemini):</strong>
-                             <ul className="list-disc pl-4 mt-1 space-y-1">
-                                <li>Get free API Key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 underline">Google AI Studio</a>.</li>
-                            </ul>
-                        </li>
-                        <li>
-                            <strong>Connect (Create .env file):</strong> 
-                            <div className="bg-slate-900 text-slate-50 p-3 rounded-md mt-2 font-mono text-xs overflow-x-auto">
-                                VITE_SUPABASE_URL=your_project_url<br/>
-                                VITE_SUPABASE_KEY=your_anon_key<br/>
-                                API_KEY=your_gemini_key
-                            </div>
-                        </li>
-                    </ol>
-                    <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs">
-                        <strong>Deploying?</strong> If using Vercel, add these same variables in the Vercel Project Settings.
+                    <div className="bg-slate-900 text-slate-50 p-4 rounded-xl mb-6 font-mono text-xs leading-relaxed border-l-4 border-indigo-500">
+                        VITE_SUPABASE_URL=your_project_url<br/>
+                        VITE_SUPABASE_KEY=your_anon_key<br/>
+                        VITE_GEMINI_API_KEY=your_gemini_key
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex gap-3">
+                            <div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg h-fit"><Info size={16}/></div>
+                            <p className="text-xs">If using <strong>Vercel</strong>, you must add these in <i>Project Settings > Environment Variables</i> and re-deploy.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <div className="bg-amber-100 text-amber-600 p-2 rounded-lg h-fit"><AlertTriangle size={16}/></div>
+                            <p className="text-xs"><strong>Supabase RLS:</strong> Ensure your tables have Row Level Security policies allowing anonymous access, or data saves will be rejected.</p>
+                        </div>
                     </div>
                 </div>
 
-                <div className="mt-6 flex justify-end">
-                    <button onClick={() => setShowSetupModal(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-medium text-sm">
-                        Close
+                <div className="mt-8 flex justify-end">
+                    <button onClick={() => setShowSetupModal(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg shadow-indigo-100 transition-all">
+                        Got it!
                     </button>
                 </div>
             </div>
