@@ -1,3 +1,4 @@
+
 import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -36,6 +37,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
+    // Explicitly destructure children from this.props to resolve the TS error
+    const { children } = this.props;
+
     if (this.state.hasError) {
       return (
         <div style={{ padding: '20px', fontFamily: 'sans-serif', color: '#ef4444', backgroundColor: '#fff' }}>
@@ -48,7 +52,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    return this.props.children; 
+    return children; 
   }
 }
 
