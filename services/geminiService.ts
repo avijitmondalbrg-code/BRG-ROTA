@@ -27,11 +27,11 @@ export const generateRotaWithAI = async (
 
   const ai = new GoogleGenAI({ apiKey });
 
-  // Calculate the 7 days string array
+  // Calculate the 7 days string array using Local Date Strings to avoid timezone issues
   const dates = [];
   const d = new Date(weekStart);
   for(let i=0; i<7; i++){
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(d.toLocaleDateString('en-CA')); // YYYY-MM-DD in local time
       d.setDate(d.getDate()+1);
   }
 
@@ -90,3 +90,4 @@ export const generateRotaWithAI = async (
     throw error;
   }
 };
+
