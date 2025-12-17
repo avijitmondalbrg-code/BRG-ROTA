@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   AppState, 
@@ -253,7 +254,8 @@ const App: React.FC = () => {
     const weekDates = [];
     const d = new Date(currentWeekStart);
     for(let i=0; i<7; i++) {
-        weekDates.push(d.toISOString().split('T')[0]);
+        // Fix: Use local date string to match stored format
+        weekDates.push(d.toLocaleDateString('en-CA'));
         d.setDate(d.getDate() + 1);
     }
     const prevAssignments = [...assignments];
