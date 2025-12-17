@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, Shift, Location, RotaAssignment, DAYS_OF_WEEK } from '../services/types';
 import { Plus, Trash2, X, Building2, MapPin, User, Users, Stethoscope } from 'lucide-react';
@@ -49,7 +50,8 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
     for (let i = 0; i < 7; i++) {
         dates.push({
             dateObj: new Date(tempDate),
-            dateStr: tempDate.toISOString().split('T')[0],
+            // CRITICAL FIX: Use local date string (YYYY-MM-DD) to avoid UTC shifts
+            dateStr: tempDate.toLocaleDateString('en-CA'),
             // Use locale for day name instead of array index to be safe against offset changes
             dayName: tempDate.toLocaleDateString('en-GB', { weekday: 'short' }) 
         });
