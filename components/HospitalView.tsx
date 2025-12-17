@@ -22,11 +22,12 @@ export const HospitalView: React.FC<HospitalViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   
   // Default range: current week (Mon-Sun)
+  // We use local date strings to initialize inputs to avoid timezone shifts
   const defaultToDate = new Date(weekStart);
   defaultToDate.setDate(defaultToDate.getDate() + 6);
   
-  const [fromDate, setFromDate] = useState<string>(weekStart.toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState<string>(defaultToDate.toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState<string>(weekStart.toLocaleDateString('en-CA'));
+  const [toDate, setToDate] = useState<string>(defaultToDate.toLocaleDateString('en-CA'));
 
   // --- Date Range Generation ---
   const rangeDates = useMemo(() => {
@@ -40,7 +41,8 @@ export const HospitalView: React.FC<HospitalViewProps> = ({
     while (current <= end && count < 60) {
       dates.push({
         dateObj: new Date(current),
-        dateStr: current.toISOString().split('T')[0],
+        // CRITICAL FIX: Use local date string instead of ISO to prevent -1 day error in +GMT zones
+        dateStr: current.toLocaleDateString('en-CA'),
         dayName: current.toLocaleDateString('en-GB', { weekday: 'short' })
       });
       current.setDate(current.getDate() + 1);
