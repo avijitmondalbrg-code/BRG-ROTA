@@ -35,7 +35,8 @@ import {
   Search,
   AlertTriangle,
   Info,
-  Terminal
+  Terminal,
+  RefreshCw
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -47,6 +48,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.GRID);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Date State (Monday of the current week)
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
@@ -94,7 +96,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (dbError) {
-      const timer = setTimeout(() => setDbError(null), 5000);
+      const timer = setTimeout(() => setDbError(null), 8000);
       return () => clearTimeout(timer);
     }
   }, [dbError]);
@@ -113,53 +115,389 @@ const App: React.FC = () => {
     }
 
     try {
-      const { data: locData, error: locErr } = await supabase.from('locations').select('*');
-      if (locErr) throw locErr;
-      if (locData) setLocations(locData);
+      // Fetch all core data in parallel
+      const [locRes, empRes, shiftRes, assignRes] = await Promise.all([
+        supabase.from('locations').select('*'),
+        supabase.from('employees').select('*'),
+        supabase.from('shifts').select('*'),
+        supabase.from('assignments').select('*')
+      ]);
 
-      const { data: empData, error: empErr } = await supabase.from('employees').select('*');
-      if (empErr) throw empErr;
-      if (empData) {
-        const mappedEmployees: Employee[] = empData.map((e: any) => ({
-          id: e.id,
-          name: e.name,
-          role: e.role,
-          category: e.category,
-          defaultLocationId: e.default_location_id,
-          preferredHours: Number(e.preferred_hours) || 40,
-          availableDays: e.available_days || DAYS_OF_WEEK
-        }));
-        setEmployees(mappedEmployees);
+      if (locRes.error) throw locRes.error;
+      if (empRes.error) throw empRes.error;
+      if (shiftRes.error) throw shiftRes.error;
+      if (assignRes.error) throw assignRes.error;
+
+      setLocations(locRes.data || []);
+      
+      setEmployees((empRes.data || []).map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        role: e.role,
+        category: e.category,
+        defaultLocationId: e.default_location_id,
+        preferredHours: Number(e.preferred_hours) || 40,
+        availableDays: e.available_days || DAYS_OF_WEEK
+      })));
+
+      setShifts((shiftRes.data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        hours: s.hours
+      })));
+
+      setAssignments((assignRes.data || []).map((a: any) => ({
+        id: a.id,
+        date: a.date,
+        employeeId: a.employee_id,
+        shiftId: a.shift_id,
+        locationId: a.location_id
+      })));
+
+    } catch (error: any) {
+      console.error("Fetch Error:", error);
+      setDbError(`Sync Failed: ${error.message || 'Check database connection'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAssign = async (dateStr: string, employeeId: string, shiftId: string, locationId?: string) => {
+    if (!isAdmin) return;
+    
+    const emp = employees.find(e => e.id === employeeId);
+    const selectedLoc = locationId || emp?.defaultLocationId || (locations.length > 0 ? locations[0].id : '');
+    
+    // Check if already exists locally to prevent double assignment
+    const exists = assignments.some(a => a.date === dateStr && a.employeeId === employeeId && a.shiftId === shiftId);
+    if (exists) return;
+
+    const newAssignment: RotaAssignment = { 
+      id: Math.random().toString(36).substr(2, 9), 
+      date: dateStr, 
+      employeeId, 
+      shiftId,
+      locationId: selectedLoc
+    };
+
+    // Optimistic Update
+    setAssignments(prev => [...prev, newAssignment]);
+
+    if (!isSupabaseConfigured) return;
+
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('assignments').insert([{
+        id: newAssignment.id,
+        date: dateStr,
+        employee_id: employeeId,
+        shift_id: shiftId,
+        location_id: selectedLoc
+      }]);
+      
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Save Error:", error);
+      setDbError(`Failed to save to cloud: ${error.message}`);
+      // Rollback on error
+      setAssignments(prev => prev.filter(a => a.id !== newAssignment.id));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRemoveAssignment = async (assignmentId: string) => {
+    if (!isAdmin) return;
+    const prevAssignments = [...assignments];
+    setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    
+    if (!isSupabaseConfigured) return;
+    
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
+      if (error) throw error;
+    } catch (error: any) {
+      setDbError(`Delete failed: ${error.message}`);
+      setAssignments(prevAssignments);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleUpdateAssignmentLocation = async (assignmentId: string, locationId: string) => {
+    const prevAssignments = [...assignments];
+    setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, locationId } : a));
+    
+    if (!isSupabaseConfigured) return;
+    
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
+      if (error) throw error;
+    } catch (error: any) {
+      setDbError(`Update failed: ${error.message}`);
+      setAssignments(prevAssignments);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  const handleClearRotaRequest = () => {
+    if (!isAdmin) return;
+    setShowClearModal(true);
+    setClearPassword('');
+    setClearError('');
+  };
+
+  const handleClearRotaConfirm = async () => {
+    if (clearPassword !== 'brrpl1234') {
+        setClearError('Incorrect password. Please try again.');
+        return;
+    }
+    
+    const weekDates = [];
+    const d = new Date(currentWeekStart);
+    for(let i=0; i<7; i++) {
+        weekDates.push(d.toLocaleDateString('en-CA'));
+        d.setDate(d.getDate() + 1);
+    }
+    
+    const prevAssignments = [...assignments];
+    setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
+    
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('assignments').delete().in('date', weekDates);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Clear failed: ${error.message}`);
+            setAssignments(prevAssignments);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+    setShowClearModal(false);
+  };
+
+  const handleGenerateAI = async () => {
+    if (!isAdmin) return;
+    setIsGenerating(true);
+    setErrorMsg(null);
+    try {
+      const newAssignments = await generateRotaWithAI(employees, shifts, locations, aiPrompt, currentWeekStart);
+      
+      if (newAssignments.length === 0) {
+          setErrorMsg("AI could not generate any assignments. Try different constraints.");
+          return;
       }
 
-      const { data: shiftData, error: shiftErr } = await supabase.from('shifts').select('*');
-      if (shiftErr) throw shiftErr;
-      if (shiftData) {
-        setShifts(shiftData.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          color: s.color,
-          startTime: s.start_time,
-          endTime: s.end_time,
-          hours: s.hours
-        })));
-      }
-
-      const { data: assignData, error: assignError } = await supabase.from('assignments').select('*');
-      if (assignError) throw assignError;
-
-      if (assignData) {
-        const mappedAssignments: RotaAssignment[] = assignData.map((a: any) => ({
+      setAssignments(prev => [...prev, ...newAssignments]);
+      
+      if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        const dbPayload = newAssignments.map(a => ({
           id: a.id,
           date: a.date,
-          employeeId: a.employee_id,
-          shiftId: a.shift_id,
-          locationId: a.location_id
+          employee_id: a.employeeId,
+          shift_id: a.shiftId,
+          location_id: a.locationId
         }));
-        setAssignments(mappedAssignments);
+        const { error } = await supabase.from('assignments').insert(dbPayload);
+        if (error) throw error;
       }
-    } catch (error: any) {
-      setDbError(`Database Fetch Failed: ${error.message}`);
+      setShowAiModal(false);
+      setAiPrompt('');
+    } catch (err: any) {
+      setErrorMsg('Generation failed: ' + err.message);
+    } finally {
+      setIsGenerating(false);
+      setIsSyncing(false);
+    }
+  };
+
+  const handleAddEmployee = async (emp: Employee) => {
+    setEmployees(prev => [...prev, emp]);
+    if (isSupabaseConfigured) {
+      setIsSyncing(true);
+      try {
+        const { error } = await supabase.from('employees').insert([{
+          id: emp.id, 
+          name: emp.name, 
+          role: emp.role, 
+          category: emp.category, 
+          default_location_id: emp.defaultLocationId, 
+          preferred_hours: emp.preferredHours,
+          // Corrected property name from available_days to availableDays
+          available_days: emp.availableDays 
+        }]);
+        if (error) throw error;
+      } catch (error: any) {
+        setDbError(`Staff Add Failed: ${error.message}`);
+        setEmployees(prev => prev.filter(e => e.id !== emp.id));
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  const handleUpdateEmployee = async (updatedEmp: Employee) => {
+    const prev = [...employees];
+    setEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('employees').update({
+                name: updatedEmp.name,
+                role: updatedEmp.role,
+                category: updatedEmp.category,
+                default_location_id: updatedEmp.defaultLocationId,
+                preferred_hours: updatedEmp.preferredHours,
+                // Corrected property name from available_days to availableDays
+                available_days: updatedEmp.availableDays 
+            }).eq('id', updatedEmp.id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Update failed: ${error.message}`);
+            setEmployees(prev);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleRemoveEmployee = async (id: string) => {
+    const prev = [...employees];
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('employees').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setEmployees(prev);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleAddShift = async (shift: Shift) => {
+    setShifts(prev => [...prev, shift]);
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('shifts').insert([{
+                id: shift.id, name: shift.name, color: shift.color, 
+                start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
+            }]);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Shift Add Failed: ${error.message}`);
+            setShifts(prev => prev.filter(s => s.id !== shift.id));
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleRemoveShift = async (id: string) => {
+    const prev = [...shifts];
+    setShifts(prev => prev.filter(s => s.id !== id));
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('shifts').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setShifts(prev);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleAddLocation = async (loc: Location) => {
+    setLocations(prev => [...prev, loc]);
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('locations').insert([loc]);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Location Add Failed: ${error.message}`);
+            setLocations(prev => prev.filter(l => l.id !== loc.id));
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleUpdateLocation = async (updatedLoc: Location) => {
+    const prev = [...locations];
+    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('locations').update({ name: updatedLoc.name }).eq('id', updatedLoc.id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Update failed: ${error.message}`);
+            setLocations(prev);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleRemoveLocation = async (id: string) => {
+    const prev = [...locations];
+    setLocations(prev => prev.filter(l => l.id !== id));
+    if (isSupabaseConfigured) {
+        setIsSyncing(true);
+        try {
+            const { error } = await supabase.from('locations').delete().eq('id', id);
+            if (error) throw error;
+        } catch (error: any) {
+            setDbError(`Delete failed: ${error.message}`);
+            setLocations(prev);
+        } finally {
+            setIsSyncing(false);
+        }
+    }
+  };
+
+  const handleSeedData = async () => {
+    if (!isSupabaseConfigured) return;
+    setIsLoading(true);
+    try {
+      await supabase.from('locations').insert(INITIAL_LOCATIONS);
+      setLocations(INITIAL_LOCATIONS);
+      await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
+        id: e.id, 
+        name: e.name, 
+        role: e.role, 
+        category: e.category, 
+        default_location_id: e.defaultLocationId, 
+        preferred_hours: e.preferredHours,
+        // Corrected property name from available_days to availableDays
+        available_days: e.availableDays
+      })));
+      setEmployees(INITIAL_EMPLOYEES);
+      await supabase.from('shifts').insert(INITIAL_SHIFTS.map(s => ({
+        id: s.id, name: s.name, color: s.color, 
+        start_time: s.startTime, end_time: s.endTime, hours: s.hours
+      })));
+      setShifts(INITIAL_SHIFTS);
+      alert("Demo data uploaded!");
+    } catch (e: any) {
+      setDbError("Error seeding: " + e.message);
     } finally {
       setIsLoading(false);
     }
@@ -179,284 +517,8 @@ const App: React.FC = () => {
     else if (pwd !== null) alert("Incorrect password");
   };
 
-  const handleAssign = async (dateStr: string, employeeId: string, shiftId: string, locationId?: string) => {
-    if (!isAdmin) return;
-    const emp = employees.find(e => e.id === employeeId);
-    const defaultLoc = locationId || emp?.defaultLocationId || (locations.length > 0 ? locations[0].id : '');
-    const exists = assignments.some(a => a.date === dateStr && a.employeeId === employeeId && a.shiftId === shiftId);
-    if (exists) return;
-
-    const newAssignment = { 
-      id: Math.random().toString(36).substr(2, 9), 
-      date: dateStr, 
-      employeeId, 
-      shiftId,
-      locationId: defaultLoc
-    };
-
-    setAssignments(prev => [...prev, newAssignment]);
-    if (!isSupabaseConfigured) return;
-
-    try {
-      const { error } = await supabase.from('assignments').insert([{
-        id: newAssignment.id,
-        date: dateStr,
-        employee_id: employeeId,
-        shift_id: shiftId,
-        location_id: defaultLoc
-      }]);
-      if (error) throw error;
-    } catch (error: any) {
-      setDbError(`Failed to save: ${error.message}`);
-      setAssignments(prev => prev.filter(a => a.id !== newAssignment.id));
-    }
-  };
-
-  const handleRemoveAssignment = async (assignmentId: string) => {
-    if (!isAdmin) return;
-    const prevAssignments = [...assignments];
-    setAssignments(prev => prev.filter(a => a.id !== assignmentId));
-    if (!isSupabaseConfigured) return;
-    try {
-      const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
-      if (error) throw error;
-    } catch (error: any) {
-      setDbError(`Delete failed: ${error.message}`);
-      setAssignments(prevAssignments);
-    }
-  };
-
-  const handleUpdateAssignmentLocation = async (assignmentId: string, locationId: string) => {
-    const prevAssignments = [...assignments];
-    setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, locationId } : a));
-    if (!isSupabaseConfigured) return;
-    try {
-      const { error } = await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
-      if (error) throw error;
-    } catch (error: any) {
-      setDbError(`Update failed: ${error.message}`);
-      setAssignments(prevAssignments);
-    }
-  }
-
-  const handleClearRotaRequest = () => {
-    if (!isAdmin) return;
-    setShowClearModal(true);
-    setClearPassword('');
-    setClearError('');
-  };
-
-  const handleClearRotaConfirm = async () => {
-    if (clearPassword !== 'brrpl1234') {
-        setClearError('Incorrect password. Please try again.');
-        return;
-    }
-    const weekDates = [];
-    const d = new Date(currentWeekStart);
-    for(let i=0; i<7; i++) {
-        // Fix: Use local date string to match stored format
-        weekDates.push(d.toLocaleDateString('en-CA'));
-        d.setDate(d.getDate() + 1);
-    }
-    const prevAssignments = [...assignments];
-    setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('assignments').delete().in('date', weekDates);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Clear failed: ${error.message}`);
-            setAssignments(prevAssignments);
-        }
-    }
-    setShowClearModal(false);
-  };
-
-  const handleAddEmployee = async (emp: Employee) => {
-    setEmployees(prev => [...prev, emp]);
-    if (isSupabaseConfigured) {
-      try {
-        const { error } = await supabase.from('employees').insert([{
-          id: emp.id, 
-          name: emp.name, 
-          role: emp.role, 
-          category: emp.category, 
-          default_location_id: emp.defaultLocationId, 
-          preferred_hours: emp.preferredHours,
-          available_days: emp.availableDays 
-        }]);
-        if (error) throw error;
-      } catch (error: any) {
-        setDbError(`Staff Add Failed: ${error.message}`);
-        setEmployees(prev => prev.filter(e => e.id !== emp.id));
-      }
-    }
-  };
-
-  const handleUpdateEmployee = async (updatedEmp: Employee) => {
-    const prev = [...employees];
-    setEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('employees').update({
-                name: updatedEmp.name,
-                role: updatedEmp.role,
-                category: updatedEmp.category,
-                default_location_id: updatedEmp.defaultLocationId,
-                preferred_hours: updatedEmp.preferredHours,
-                available_days: updatedEmp.availableDays 
-            }).eq('id', updatedEmp.id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Update failed: ${error.message}`);
-            setEmployees(prev);
-        }
-    }
-  };
-
-  const handleRemoveEmployee = async (id: string) => {
-    const prev = [...employees];
-    setEmployees(prev => prev.filter(e => e.id !== id));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('employees').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setEmployees(prev);
-        }
-    }
-  };
-
-  const handleAddShift = async (shift: Shift) => {
-    setShifts(prev => [...prev, shift]);
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('shifts').insert([{
-                id: shift.id, name: shift.name, color: shift.color, 
-                start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
-            }]);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Shift Add Failed: ${error.message}`);
-            setShifts(prev => prev.filter(s => s.id !== shift.id));
-        }
-    }
-  };
-
-  const handleRemoveShift = async (id: string) => {
-    const prev = [...shifts];
-    setShifts(prev => prev.filter(s => s.id !== id));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('shifts').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setShifts(prev);
-        }
-    }
-  };
-
-  const handleAddLocation = async (loc: Location) => {
-    setLocations(prev => [...prev, loc]);
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('locations').insert([loc]);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Location Add Failed: ${error.message}`);
-            setLocations(prev => prev.filter(l => l.id !== loc.id));
-        }
-    }
-  };
-
-  const handleUpdateLocation = async (updatedLoc: Location) => {
-    const prev = [...locations];
-    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('locations').update({ name: updatedLoc.name }).eq('id', updatedLoc.id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Update failed: ${error.message}`);
-            setLocations(prev);
-        }
-    }
-  };
-
-  const handleRemoveLocation = async (id: string) => {
-    const prev = [...locations];
-    setLocations(prev => prev.filter(l => l.id !== id));
-    if (isSupabaseConfigured) {
-        try {
-            const { error } = await supabase.from('locations').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setLocations(prev);
-        }
-    }
-  };
-
-  const handleSeedData = async () => {
-    if (!isSupabaseConfigured) return;
-    setIsLoading(true);
-    try {
-      await supabase.from('locations').insert(INITIAL_LOCATIONS);
-      setLocations(INITIAL_LOCATIONS);
-      await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
-        id: e.id, 
-        name: e.name, 
-        role: e.role, 
-        category: e.category, 
-        default_location_id: e.defaultLocationId, 
-        preferred_hours: e.preferredHours,
-        available_days: e.availableDays
-      })));
-      setEmployees(INITIAL_EMPLOYEES);
-      await supabase.from('shifts').insert(INITIAL_SHIFTS.map(s => ({
-        id: s.id, name: s.name, color: s.color, 
-        start_time: s.startTime, end_time: s.endTime, hours: s.hours
-      })));
-      setShifts(INITIAL_SHIFTS);
-      alert("Demo data uploaded!");
-    } catch (e: any) {
-      setDbError("Error seeding: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGenerateAI = async () => {
-    if (!isAdmin) return;
-    setIsGenerating(true);
-    setErrorMsg(null);
-    try {
-      const newAssignments = await generateRotaWithAI(employees, shifts, locations, aiPrompt, currentWeekStart);
-      setAssignments(prev => [...prev, ...newAssignments]);
-      if (isSupabaseConfigured && newAssignments.length > 0) {
-        const dbPayload = newAssignments.map(a => ({
-          id: a.id,
-          date: a.date,
-          employee_id: a.employeeId,
-          shift_id: a.shiftId,
-          location_id: a.locationId
-        }));
-        const { error } = await supabase.from('assignments').insert(dbPayload);
-        if (error) throw error;
-      }
-      setShowAiModal(false);
-      setAiPrompt('');
-    } catch (err: any) {
-      setErrorMsg('Generation failed: ' + err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   const renderContent = () => {
-    if (isLoading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>;
+    if (isLoading) return <div className="flex flex-col items-center justify-center p-20 gap-4"><Loader2 className="animate-spin text-indigo-600" size={40} /><p className="text-slate-500 font-medium">Syncing with database...</p></div>;
     switch (view) {
       case ViewMode.GRID:
         return (
@@ -506,6 +568,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
+      {/* DB Sync Status Indicator */}
+      {isSyncing && (
+        <div className="fixed bottom-6 right-6 z-[60] bg-white border border-slate-200 shadow-xl px-4 py-2 rounded-full flex items-center gap-2 animate-in slide-in-from-bottom-2">
+            <RefreshCw size={14} className="animate-spin text-indigo-600" />
+            <span className="text-xs font-bold text-slate-700">Syncing with Cloud...</span>
+        </div>
+      )}
+
       {dbError && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4">
            <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border-b-4 border-red-800">
@@ -644,37 +714,34 @@ const App: React.FC = () => {
                 <div className="space-y-6">
                     <section>
                         <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
-                            <Terminal size={16}/> 1. Fix Missing Database Column
+                            <Terminal size={16}/> 1. Fix Database Tables
                         </h3>
-                        <p className="text-xs text-slate-600 mb-3">If you get an error "Could not find the available_days column", run this in your Supabase SQL Editor:</p>
+                        <p className="text-xs text-slate-600 mb-3">Copy and run this in your Supabase SQL Editor to ensure columns exist:</p>
                         <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-indigo-500 relative">
-                            <pre className="whitespace-pre-wrap">ALTER TABLE employees ADD COLUMN IF NOT EXISTS available_days text[] DEFAULT '{"{Mon,Tue,Wed,Thu,Fri,Sat,Sun}"}';</pre>
+                            <pre className="whitespace-pre-wrap">
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS available_days text[] DEFAULT '{"{Mon,Tue,Wed,Thu,Fri,Sat,Sun}"}';
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS default_location_id text;
+                            </pre>
                         </div>
                     </section>
 
                     <section>
                         <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
-                            <Info size={16}/> 2. Environment Variables
+                            <Info size={16}/> 2. Check Connection
                         </h3>
-                        <p className="text-xs text-slate-600 mb-2">Ensure your server/Vercel settings have these exact keys:</p>
+                        <p className="text-xs text-slate-600 mb-2">Your app is looking for these environment variables:</p>
                         <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-emerald-500">
-                            VITE_SUPABASE_URL=your_project_url<br/>
-                            VITE_SUPABASE_KEY=your_anon_key<br/>
-                            VITE_GEMINI_API_KEY=your_gemini_key
+                            VITE_SUPABASE_URL<br/>
+                            VITE_SUPABASE_KEY<br/>
+                            API_KEY (for AI)
                         </div>
                     </section>
-
-                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex gap-3 items-start">
-                        <AlertTriangle className="text-amber-600 shrink-0" size={16} />
-                        <div className="text-xs text-amber-800">
-                            <strong>Supabase RLS Policy:</strong> If data still doesn't save, ensure you have enabled a policy for "Enable access to all users" on the employees and assignments tables.
-                        </div>
-                    </div>
                 </div>
 
                 <div className="mt-8 flex justify-end">
-                    <button onClick={() => setShowSetupModal(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all">
-                        Got it!
+                    {/* Fixed onClick handler to use block syntax for multiple statements */}
+                    <button onClick={() => { setShowSetupModal(true); fetchData(); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2">
+                        <RefreshCw size={16}/> Refresh & Sync
                     </button>
                 </div>
             </div>
