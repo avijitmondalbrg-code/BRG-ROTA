@@ -1,33 +1,37 @@
+
 import { createClient } from '@supabase/supabase-js';
 
-// Helper to safely access env vars in Vite or standard environments
-const getEnv = (key: string) => {
-  // Try Vite's import.meta.env first
+const getEnv = (key: string): string => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
     return import.meta.env[key];
   }
-  // Fallback to process.env (for some server-side or non-Vite contexts)
-  // @ts-ignore
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    // @ts-ignore
-    return process.env[key];
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
+  if (typeof window !== 'undefined' && (window as any)[key]) {
+    return (window as any)[key];
   }
   return '';
 };
 
-const supabaseUrl = getEnv('VITE_SUPABASE_URL')?.trim();
-const supabaseKey = getEnv('VITE_SUPABASE_KEY')?.trim();
+const supabaseUrl = getEnv('VITE_SUPABASE_URL').trim();
+const supabaseKey = getEnv('VITE_SUPABASE_KEY').trim();
 
-export const isSupabaseConfigured = !!supabaseUrl && !!supabaseKey && supabaseUrl !== 'undefined' && supabaseUrl !== '';
+// Enhanced check: Supabase keys must be long JWT tokens (starting with ey...)
+export const isSupabaseConfigured = 
+  !!supabaseUrl && 
+  !!supabaseKey && 
+  supabaseUrl.startsWith('https://') &&
+  supabaseKey.startsWith('ey'); // Supabase anon keys are JWTs starting with 'ey'
 
-if (!isSupabaseConfigured) {
-  console.warn("SUPABASE CONFIGURATION MISSING:");
-  if (!supabaseUrl) console.warn("- VITE_SUPABASE_URL is missing");
-  if (!supabaseKey) console.warn("- VITE_SUPABASE_KEY is missing");
-  console.warn("The app will run in OFFLINE/DEMO MODE. Data will NOT persist after refresh.");
+if (!isSupabaseConfigured && supabaseUrl) {
+  if (!supabaseKey.startsWith('ey')) {
+    console.error("INVALID SUPABASE KEY: The provided key doesn't look like a Supabase key. It should start with 'ey...'. Please check your Supabase Dashboard > Settings > API.");
+  }
 }
 
-// Create client with fallback values to prevent whitespace crash on load.
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co', 
   supabaseKey || 'placeholder'
