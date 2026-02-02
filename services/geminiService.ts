@@ -15,6 +15,9 @@ Rules:
 4. RESPECT EMPLOYEE AVAILABILITY. Do not assign shifts on days not listed in their 'availableDays'.
 `;
 
+/**
+ * Generates a rota using Gemini 3 Pro reasoning capabilities.
+ */
 export const generateRotaWithAI = async (
   employees: Employee[],
   shifts: Shift[],
@@ -25,6 +28,7 @@ export const generateRotaWithAI = async (
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("API Key missing");
 
+  // Initializing GenAI client
   const ai = new GoogleGenAI({ apiKey });
 
   // Calculate the 7 days string array using Local Date Strings to avoid timezone issues
@@ -53,8 +57,9 @@ export const generateRotaWithAI = async (
   `;
 
   try {
+    // Calling generateContent directly on ai.models as per guidelines
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-pro-preview",
       contents: inputPrompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -75,6 +80,7 @@ export const generateRotaWithAI = async (
       }
     });
 
+    // Accessing .text property directly instead of text() method
     const text = response.text;
     if (!text) return [];
 
@@ -90,4 +96,3 @@ export const generateRotaWithAI = async (
     throw error;
   }
 };
-
