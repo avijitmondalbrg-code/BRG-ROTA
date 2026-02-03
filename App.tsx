@@ -35,22 +35,21 @@ import {
   Search,
   AlertTriangle,
   Info,
-  Terminal,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  ExternalLink,
+  Key,
+  CheckCircle2
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  // --- State ---
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    return localStorage.getItem('brg_rota_is_admin') === 'true';
-  });
-
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem('brg_rota_is_admin') === 'true');
   const [view, setView] = useState<ViewMode>(ViewMode.GRID);
   const [isLoading, setIsLoading] = useState(true);
-  const [dbError, setDbError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'connected' | 'error' | 'none'>('none');
+  const [dbError, setDbError] = useState<string | null>(null);
 
-  // Date State (Monday of the current week)
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     const today = new Date();
     const day = today.getDay();
@@ -60,46 +59,27 @@ const App: React.FC = () => {
     return monday;
   });
 
-  // Data State
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [assignments, setAssignments] = useState<RotaAssignment[]>([]);
-  
-  // Filter State
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // AI State
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [showAiModal, setShowAiModal] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  // Setup Help Modal
   const [showSetupModal, setShowSetupModal] = useState(false);
-
-  // Clear Confirmation Modal State
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearPassword, setClearPassword] = useState('');
   const [clearError, setClearError] = useState('');
 
-  // --- Effects ---
-  
   useEffect(() => {
     localStorage.setItem('brg_rota_is_admin', String(isAdmin));
-    if (!isAdmin && view !== ViewMode.GRID && view !== ViewMode.HOSPITAL_VIEW) setView(ViewMode.GRID);
   }, [isAdmin]);
 
   useEffect(() => {
     fetchData();
   }, []);
-
-  useEffect(() => {
-    if (dbError) {
-      const timer = setTimeout(() => setDbError(null), 8000);
-      return () => clearTimeout(timer);
-    }
-  }, [dbError]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -109,13 +89,20 @@ const App: React.FC = () => {
       setEmployees(INITIAL_EMPLOYEES);
       setShifts(INITIAL_SHIFTS);
       setLocations(INITIAL_LOCATIONS);
-      setAssignments([]);
+      setDbStatus('none');
       setIsLoading(false);
+      setShowSetupModal(true);
       return;
     }
 
     try {
-      // Fetch all core data in parallel
+      // Test actual connectivity
+      const { error: testError } = await supabase.from('locations').select('id').limit(1);
+      if (testError) throw testError;
+      
+      setDbStatus('connected');
+      setShowSetupModal(false);
+
       const [locRes, empRes, shiftRes, assignRes] = await Promise.all([
         supabase.from('locations').select('*'),
         supabase.from('employees').select('*'),
@@ -123,43 +110,34 @@ const App: React.FC = () => {
         supabase.from('assignments').select('*')
       ]);
 
-      if (locRes.error) throw locRes.error;
-      if (empRes.error) throw empRes.error;
-      if (shiftRes.error) throw shiftRes.error;
-      if (assignRes.error) throw assignRes.error;
-
-      setLocations(locRes.data || []);
-      
-      setEmployees((empRes.data || []).map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        role: e.role,
-        category: e.category,
-        defaultLocationId: e.default_location_id,
-        preferredHours: Number(e.preferred_hours) || 40,
-        availableDays: e.available_days || DAYS_OF_WEEK
-      })));
-
-      setShifts((shiftRes.data || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        color: s.color,
-        startTime: s.start_time,
-        endTime: s.end_time,
-        hours: s.hours
-      })));
-
-      setAssignments((assignRes.data || []).map((a: any) => ({
-        id: a.id,
-        date: a.date,
-        employeeId: a.employee_id,
-        shiftId: a.shift_id,
-        locationId: a.location_id
-      })));
+      if (locRes.data && locRes.data.length > 0) {
+          setLocations(locRes.data);
+          setEmployees((empRes.data || []).map((e: any) => ({
+            id: e.id, name: e.name, role: e.role, category: e.category,
+            defaultLocationId: e.default_location_id, preferred_hours: Number(e.preferred_hours) || 40,
+            availableDays: e.available_days || DAYS_OF_WEEK
+          })));
+          setShifts((shiftRes.data || []).map((s: any) => ({
+            id: s.id, name: s.name, color: s.color, startTime: s.start_time, endTime: s.end_time, hours: s.hours
+          })));
+          setAssignments((assignRes.data || []).map((a: any) => ({
+            id: a.id, date: a.date, employeeId: a.employee_id, shiftId: a.shift_id, locationId: a.location_id
+          })));
+      } else {
+          // If DB is connected but empty, show defaults only locally until saved
+          setLocations(INITIAL_LOCATIONS);
+          setEmployees(INITIAL_EMPLOYEES);
+          setShifts(INITIAL_SHIFTS);
+      }
 
     } catch (error: any) {
-      console.error("Fetch Error:", error);
-      setDbError(`Sync Failed: ${error.message || 'Check database connection'}`);
+      console.error("Supabase Fetch Error:", error);
+      setDbStatus('error');
+      setDbError(`Connection Error: ${error.message}`);
+      // Fallback
+      setEmployees(INITIAL_EMPLOYEES);
+      setShifts(INITIAL_SHIFTS);
+      setLocations(INITIAL_LOCATIONS);
     } finally {
       setIsLoading(false);
     }
@@ -167,121 +145,152 @@ const App: React.FC = () => {
 
   const handleAssign = async (dateStr: string, employeeId: string, shiftId: string, locationId?: string) => {
     if (!isAdmin) return;
-    
     const emp = employees.find(e => e.id === employeeId);
     const selectedLoc = locationId || emp?.defaultLocationId || (locations.length > 0 ? locations[0].id : '');
     
-    // Check if already exists locally to prevent double assignment
-    const exists = assignments.some(a => a.date === dateStr && a.employeeId === employeeId && a.shiftId === shiftId);
-    if (exists) return;
+    const newAssignmentId = Math.random().toString(36).substr(2, 9);
+    const newAssignment: RotaAssignment = { id: newAssignmentId, date: dateStr, employeeId, shiftId, locationId: selectedLoc };
 
-    const newAssignment: RotaAssignment = { 
-      id: Math.random().toString(36).substr(2, 9), 
-      date: dateStr, 
-      employeeId, 
-      shiftId,
-      locationId: selectedLoc
-    };
-
-    // Optimistic Update
     setAssignments(prev => [...prev, newAssignment]);
-
-    if (!isSupabaseConfigured) return;
+    if (dbStatus !== 'connected') return;
 
     setIsSyncing(true);
     try {
       const { error } = await supabase.from('assignments').insert([{
-        id: newAssignment.id,
-        date: dateStr,
-        employee_id: employeeId,
-        shift_id: shiftId,
-        location_id: selectedLoc
+        id: newAssignmentId, date: dateStr, employee_id: employeeId, shift_id: shiftId, location_id: selectedLoc
       }]);
-      
       if (error) throw error;
     } catch (error: any) {
-      console.error("Save Error:", error);
-      setDbError(`Failed to save to cloud: ${error.message}`);
-      // Rollback on error
-      setAssignments(prev => prev.filter(a => a.id !== newAssignment.id));
-    } finally {
-      setIsSyncing(false);
-    }
+      setDbError(`Save failed: ${error.message}`);
+    } finally { setIsSyncing(false); }
   };
 
   const handleRemoveAssignment = async (assignmentId: string) => {
     if (!isAdmin) return;
-    const prevAssignments = [...assignments];
     setAssignments(prev => prev.filter(a => a.id !== assignmentId));
-    
-    if (!isSupabaseConfigured) return;
-    
+    if (dbStatus !== 'connected') return;
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('assignments').delete().eq('id', assignmentId);
-      if (error) throw error;
-    } catch (error: any) {
-      setDbError(`Delete failed: ${error.message}`);
-      setAssignments(prevAssignments);
-    } finally {
-      setIsSyncing(false);
-    }
+      await supabase.from('assignments').delete().eq('id', assignmentId);
+    } catch (error: any) { setDbError(`Delete failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
   };
 
   const handleUpdateAssignmentLocation = async (assignmentId: string, locationId: string) => {
-    const prevAssignments = [...assignments];
     setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, locationId } : a));
-    
-    if (!isSupabaseConfigured) return;
-    
+    if (dbStatus !== 'connected') return;
     setIsSyncing(true);
     try {
-      const { error } = await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
-      if (error) throw error;
-    } catch (error: any) {
-      setDbError(`Update failed: ${error.message}`);
-      setAssignments(prevAssignments);
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
-  const handleClearRotaRequest = () => {
-    if (!isAdmin) return;
-    setShowClearModal(true);
-    setClearPassword('');
-    setClearError('');
+      await supabase.from('assignments').update({ location_id: locationId }).eq('id', assignmentId);
+    } catch (error: any) { setDbError(`Update failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
   };
 
-  const handleClearRotaConfirm = async () => {
-    if (clearPassword !== 'brrpl1234') {
-        setClearError('Incorrect password. Please try again.');
-        return;
-    }
-    
-    const weekDates = [];
-    const d = new Date(currentWeekStart);
-    for(let i=0; i<7; i++) {
-        weekDates.push(d.toLocaleDateString('en-CA'));
-        d.setDate(d.getDate() + 1);
-    }
-    
-    const prevAssignments = [...assignments];
-    setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
-    
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('assignments').delete().in('date', weekDates);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Clear failed: ${error.message}`);
-            setAssignments(prevAssignments);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-    setShowClearModal(false);
+  const handleAddEmployee = async (emp: Employee) => {
+    setEmployees(prev => [...prev, emp]);
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        const { error } = await supabase.from('employees').insert([{
+            id: emp.id, name: emp.name, role: emp.role, category: emp.category,
+            default_location_id: emp.defaultLocationId, preferred_hours: emp.preferredHours, available_days: emp.availableDays
+        }]);
+        if (error) throw error;
+    } catch (error: any) { setDbError(`Add staff failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleUpdateEmployee = async (emp: Employee) => {
+    setEmployees(prev => prev.map(e => e.id === emp.id ? emp : e));
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('employees').update({
+            name: emp.name, role: emp.role, category: emp.category,
+            default_location_id: emp.defaultLocationId, preferred_hours: emp.preferredHours, available_days: emp.availableDays
+        }).eq('id', emp.id);
+    } catch (error: any) { setDbError(`Update failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleRemoveEmployee = async (id: string) => {
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('employees').delete().eq('id', id);
+    } catch (error: any) { setDbError(`Delete failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleAddShift = async (shift: Shift) => {
+    setShifts(prev => [...prev, shift]);
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('shifts').insert([{
+            id: shift.id, name: shift.name, color: shift.color, start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
+        }]);
+    } catch (error: any) { setDbError(`Shift failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleRemoveShift = async (id: string) => {
+    setShifts(prev => prev.filter(s => s.id !== id));
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('shifts').delete().eq('id', id);
+    } catch (error: any) { setDbError(`Delete failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleAddLocation = async (loc: Location) => {
+    setLocations(prev => [...prev, loc]);
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('locations').insert([loc]);
+    } catch (error: any) { setDbError(`Location failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleUpdateLocation = async (loc: Location) => {
+    setLocations(prev => prev.map(l => l.id === loc.id ? loc : l));
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('locations').update({ name: loc.name }).eq('id', loc.id);
+    } catch (error: any) { setDbError(`Update failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleRemoveLocation = async (id: string) => {
+    setLocations(prev => prev.filter(l => l.id !== id));
+    if (dbStatus !== 'connected') return;
+    setIsSyncing(true);
+    try {
+        await supabase.from('locations').delete().eq('id', id);
+    } catch (error: any) { setDbError(`Delete failed: ${error.message}`); }
+    finally { setIsSyncing(false); }
+  }
+
+  const handleSeedData = async () => {
+    if (dbStatus !== 'connected') return;
+    setIsLoading(true);
+    try {
+      await supabase.from('locations').insert(INITIAL_LOCATIONS);
+      await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
+        id: e.id, name: e.name, role: e.role, category: e.category, 
+        default_location_id: e.defaultLocationId, preferred_hours: e.preferredHours, available_days: e.availableDays
+      })));
+      await supabase.from('shifts').insert(INITIAL_SHIFTS.map(s => ({
+        id: s.id, name: s.name, color: s.color, start_time: s.startTime, end_time: s.endTime, hours: s.hours
+      })));
+      await fetchData();
+      alert("Initial data uploaded to Cloud!");
+    } catch (e: any) { setDbError("Error seeding: " + e.message); }
+    finally { setIsLoading(false); }
   };
 
   const handleGenerateAI = async () => {
@@ -290,217 +299,17 @@ const App: React.FC = () => {
     setErrorMsg(null);
     try {
       const newAssignments = await generateRotaWithAI(employees, shifts, locations, aiPrompt, currentWeekStart);
-      
-      if (newAssignments.length === 0) {
-          setErrorMsg("AI could not generate any assignments. Try different constraints.");
-          return;
-      }
-
       setAssignments(prev => [...prev, ...newAssignments]);
-      
-      if (isSupabaseConfigured) {
+      if (dbStatus === 'connected' && newAssignments.length > 0) {
         setIsSyncing(true);
-        const dbPayload = newAssignments.map(a => ({
-          id: a.id,
-          date: a.date,
-          employee_id: a.employeeId,
-          shift_id: a.shiftId,
-          location_id: a.locationId
-        }));
-        const { error } = await supabase.from('assignments').insert(dbPayload);
+        const { error } = await supabase.from('assignments').insert(newAssignments.map(a => ({
+          id: a.id, date: a.date, employee_id: a.employeeId, shift_id: a.shiftId, location_id: a.locationId
+        })));
         if (error) throw error;
       }
-      setShowAiModal(false);
-      setAiPrompt('');
-    } catch (err: any) {
-      setErrorMsg('Generation failed: ' + err.message);
-    } finally {
-      setIsGenerating(false);
-      setIsSyncing(false);
-    }
-  };
-
-  const handleAddEmployee = async (emp: Employee) => {
-    setEmployees(prev => [...prev, emp]);
-    if (isSupabaseConfigured) {
-      setIsSyncing(true);
-      try {
-        const { error } = await supabase.from('employees').insert([{
-          id: emp.id, 
-          name: emp.name, 
-          role: emp.role, 
-          category: emp.category, 
-          default_location_id: emp.defaultLocationId, 
-          preferred_hours: emp.preferredHours,
-          // Corrected property name from available_days to availableDays
-          available_days: emp.availableDays 
-        }]);
-        if (error) throw error;
-      } catch (error: any) {
-        setDbError(`Staff Add Failed: ${error.message}`);
-        setEmployees(prev => prev.filter(e => e.id !== emp.id));
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-  };
-
-  const handleUpdateEmployee = async (updatedEmp: Employee) => {
-    const prev = [...employees];
-    setEmployees(prev => prev.map(e => e.id === updatedEmp.id ? updatedEmp : e));
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('employees').update({
-                name: updatedEmp.name,
-                role: updatedEmp.role,
-                category: updatedEmp.category,
-                default_location_id: updatedEmp.defaultLocationId,
-                preferred_hours: updatedEmp.preferredHours,
-                // Corrected property name from available_days to availableDays
-                available_days: updatedEmp.availableDays 
-            }).eq('id', updatedEmp.id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Update failed: ${error.message}`);
-            setEmployees(prev);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleRemoveEmployee = async (id: string) => {
-    const prev = [...employees];
-    setEmployees(prev => prev.filter(e => e.id !== id));
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('employees').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setEmployees(prev);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleAddShift = async (shift: Shift) => {
-    setShifts(prev => [...prev, shift]);
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('shifts').insert([{
-                id: shift.id, name: shift.name, color: shift.color, 
-                start_time: shift.startTime, end_time: shift.endTime, hours: shift.hours
-            }]);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Shift Add Failed: ${error.message}`);
-            setShifts(prev => prev.filter(s => s.id !== shift.id));
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleRemoveShift = async (id: string) => {
-    const prev = [...shifts];
-    setShifts(prev => prev.filter(s => s.id !== id));
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('shifts').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setShifts(prev);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleAddLocation = async (loc: Location) => {
-    setLocations(prev => [...prev, loc]);
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('locations').insert([loc]);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Location Add Failed: ${error.message}`);
-            setLocations(prev => prev.filter(l => l.id !== loc.id));
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleUpdateLocation = async (updatedLoc: Location) => {
-    const prev = [...locations];
-    setLocations(prev => prev.map(l => l.id === updatedLoc.id ? updatedLoc : l));
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('locations').update({ name: updatedLoc.name }).eq('id', updatedLoc.id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Update failed: ${error.message}`);
-            setLocations(prev);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleRemoveLocation = async (id: string) => {
-    const prev = [...locations];
-    setLocations(prev => prev.filter(l => l.id !== id));
-    if (isSupabaseConfigured) {
-        setIsSyncing(true);
-        try {
-            const { error } = await supabase.from('locations').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error: any) {
-            setDbError(`Delete failed: ${error.message}`);
-            setLocations(prev);
-        } finally {
-            setIsSyncing(false);
-        }
-    }
-  };
-
-  const handleSeedData = async () => {
-    if (!isSupabaseConfigured) return;
-    setIsLoading(true);
-    try {
-      await supabase.from('locations').insert(INITIAL_LOCATIONS);
-      setLocations(INITIAL_LOCATIONS);
-      await supabase.from('employees').insert(INITIAL_EMPLOYEES.map(e => ({
-        id: e.id, 
-        name: e.name, 
-        role: e.role, 
-        category: e.category, 
-        default_location_id: e.defaultLocationId, 
-        preferred_hours: e.preferredHours,
-        // Corrected property name from available_days to availableDays
-        available_days: e.availableDays
-      })));
-      setEmployees(INITIAL_EMPLOYEES);
-      await supabase.from('shifts').insert(INITIAL_SHIFTS.map(s => ({
-        id: s.id, name: s.name, color: s.color, 
-        start_time: s.startTime, end_time: s.endTime, hours: s.hours
-      })));
-      setShifts(INITIAL_SHIFTS);
-      alert("Demo data uploaded!");
-    } catch (e: any) {
-      setDbError("Error seeding: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
+      setShowAiModal(false); setAiPrompt('');
+    } catch (err: any) { setErrorMsg('Generation failed: ' + err.message); }
+    finally { setIsGenerating(false); setIsSyncing(false); }
   };
 
   const changeWeek = (offset: number) => {
@@ -511,29 +320,21 @@ const App: React.FC = () => {
     });
   };
 
-  const handleLogin = () => {
-    const pwd = prompt("Enter Admin Password:");
-    if (pwd === "admin") setIsAdmin(true);
-    else if (pwd !== null) alert("Incorrect password");
-  };
-
   const renderContent = () => {
-    if (isLoading) return <div className="flex flex-col items-center justify-center p-20 gap-4"><Loader2 className="animate-spin text-indigo-600" size={40} /><p className="text-slate-500 font-medium">Syncing with database...</p></div>;
+    if (isLoading) return (
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="animate-spin text-[#3159a6]" size={40} />
+        <p className="text-slate-500 font-medium">Connecting to Database...</p>
+      </div>
+    );
     switch (view) {
       case ViewMode.GRID:
         return (
           <RotaGrid 
-            weekStart={currentWeekStart}
-            employees={employees} 
-            shifts={shifts} 
-            locations={locations}
-            assignments={assignments}
-            onAssign={handleAssign}
-            onRemove={handleRemoveAssignment}
-            onUpdateLocation={handleUpdateAssignmentLocation}
-            onClear={handleClearRotaRequest}
-            readOnly={!isAdmin}
-            searchTerm={searchTerm}
+            weekStart={currentWeekStart} employees={employees} shifts={shifts} locations={locations}
+            assignments={assignments} onAssign={handleAssign} onRemove={handleRemoveAssignment}
+            onUpdateLocation={handleUpdateAssignmentLocation} onClear={() => setShowClearModal(true)}
+            readOnly={!isAdmin} searchTerm={searchTerm}
           />
         );
       case ViewMode.HOSPITAL_VIEW:
@@ -543,19 +344,11 @@ const App: React.FC = () => {
       case ViewMode.SETTINGS:
         return isAdmin ? (
           <SettingsPanel 
-            employees={employees}
-            shifts={shifts}
-            locations={locations}
-            onAddEmployee={handleAddEmployee}
-            onUpdateEmployee={handleUpdateEmployee}
-            onRemoveEmployee={handleRemoveEmployee}
-            onAddShift={handleAddShift}
-            onRemoveShift={handleRemoveShift}
-            onAddLocation={handleAddLocation}
-            onUpdateLocation={handleUpdateLocation}
-            onRemoveLocation={handleRemoveLocation}
-            onSeedData={handleSeedData}
-            isDbEmpty={isSupabaseConfigured && locations.length === 0}
+            employees={employees} shifts={shifts} locations={locations}
+            onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onRemoveEmployee={handleRemoveEmployee}
+            onAddShift={handleAddShift} onRemoveShift={handleRemoveShift}
+            onAddLocation={handleAddLocation} onUpdateLocation={handleUpdateLocation} onRemoveLocation={handleRemoveLocation}
+            onSeedData={handleSeedData} isDbEmpty={dbStatus === 'connected' && locations.length === 0}
           />
         ) : null;
       default: return null;
@@ -568,181 +361,151 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
-      {/* DB Sync Status Indicator */}
       {isSyncing && (
-        <div className="fixed bottom-6 right-6 z-[60] bg-white border border-slate-200 shadow-xl px-4 py-2 rounded-full flex items-center gap-2 animate-in slide-in-from-bottom-2">
-            <RefreshCw size={14} className="animate-spin text-indigo-600" />
-            <span className="text-xs font-bold text-slate-700">Syncing with Cloud...</span>
+        <div className="fixed bottom-6 right-6 z-[60] bg-[#3159a6] text-white shadow-xl px-4 py-2 rounded-full flex items-center gap-2 border border-white/20">
+            <RefreshCw size={14} className="animate-spin" />
+            <span className="text-xs font-bold">Cloud Syncing...</span>
         </div>
       )}
 
       {dbError && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4">
-           <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border-b-4 border-red-800">
+           <div className="bg-red-600 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border-b-4 border-red-800 animate-in slide-in-from-top-4">
               <div className="flex items-center gap-3">
                  <AlertTriangle size={20} className="shrink-0" />
-                 <span className="text-sm font-medium">{dbError}</span>
+                 <div className="flex flex-col">
+                   <span className="text-sm font-bold uppercase tracking-wide">Sync Error</span>
+                   <span className="text-xs opacity-90">{dbError}</span>
+                 </div>
               </div>
               <button onClick={() => setDbError(null)} className="p-1 hover:bg-white/10 rounded-full"><X size={18} /></button>
            </div>
         </div>
       )}
 
-      {!isSupabaseConfigured && !isLoading && (
-        <div className="bg-amber-600 text-white text-[11px] py-1.5 px-4 text-center font-bold tracking-wider uppercase animate-pulse flex items-center justify-center gap-2">
-            <WifiOff size={14}/> Demo Mode: Data will not be saved. Configure Supabase for persistence.
-        </div>
-      )}
-
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 grid grid-cols-[auto_1fr_auto] md:grid-cols-3 items-center gap-4">
-          <div className="flex justify-start">
-             <img src="https://bengalrehabilitationgroup.com/images/brg_logo.png" alt="BRG" className="h-16 w-auto object-contain" />
-          </div>
-          <div className="flex flex-col items-center justify-center">
-            <h1 className="text-xl md:text-3xl font-extrabold text-[#3159a6] tracking-tight text-center">BRG Smart Rota</h1>
-             <button onClick={() => setShowSetupModal(true)} className="flex items-center gap-2 mt-1 hover:bg-slate-50 px-2 py-1 rounded transition-colors">
-               {isSupabaseConfigured ? (
-                  <span className="text-[10px] text-green-600 flex items-center gap-1 font-medium"><Database size={10}/> Database Connected</span>
+        <div className="max-w-7xl mx-auto px-4 h-24 grid grid-cols-[auto_1fr_auto] items-center gap-4">
+          <img src="https://bengalrehabilitationgroup.com/images/brg_logo.png" alt="BRG" className="h-14 w-auto object-contain" />
+          <div className="flex flex-col items-center">
+            <h1 className="text-2xl font-extrabold text-[#3159a6]">BRG Smart Rota</h1>
+            <div className="flex items-center gap-2 mt-1">
+               {dbStatus === 'connected' ? (
+                  <span className="text-[10px] text-green-600 flex items-center gap-1 font-bold bg-green-50 px-2 py-0.5 rounded border border-green-100"><CheckCircle2 size={10}/> Cloud Storage Active</span>
                ) : (
-                  <span className="text-[10px] text-orange-500 flex items-center gap-1 font-medium"><WifiOff size={10}/> Connection Issue / Demo</span>
+                  <button onClick={() => setShowSetupModal(true)} className="text-[10px] text-red-500 flex items-center gap-1 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-100 animate-pulse underline"><AlertTriangle size={10}/> Connection Issue - Help Needed</button>
                )}
-             </button>
+            </div>
           </div>
-          <div className="flex justify-end items-center gap-2">
+          <div className="flex gap-2">
             {isAdmin ? (
-              <>
-                <button onClick={() => setShowAiModal(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium shadow-md hover:bg-indigo-700">
-                  <Sparkles size={16} /> <span className="hidden lg:inline">AI Auto-Fill</span>
-                </button>
-                <button onClick={() => setIsAdmin(false)} className="text-slate-500 hover:text-red-600 p-2"><LogOut size={18} /></button>
-              </>
+               <>
+                 <button onClick={() => setShowAiModal(true)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 flex items-center gap-2 transition-transform active:scale-95"><Sparkles size={16} /> AI Auto-Fill</button>
+                 <button onClick={() => setIsAdmin(false)} className="text-slate-400 hover:text-red-500 p-2"><LogOut size={18} /></button>
+               </>
             ) : (
-              <button onClick={handleLogin} className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg font-medium text-sm hover:bg-indigo-100">
-                <Lock size={16} /> Login
-              </button>
+              <button onClick={() => { const p = prompt("Admin Password:"); if(p==="admin") setIsAdmin(true); }} className="text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-100 flex items-center gap-2"><Lock size={16} /> Admin Login</button>
             )}
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-          <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl">
-            <button onClick={() => setView(ViewMode.GRID)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === ViewMode.GRID ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
-              <CalendarDays size={18} /> Schedule
-            </button>
-            <button onClick={() => setView(ViewMode.HOSPITAL_VIEW)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === ViewMode.HOSPITAL_VIEW ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
-              <Building2 size={18} /> Hospital
-            </button>
+          <div className="flex bg-slate-200/50 p-1 rounded-xl">
+            <button onClick={() => setView(ViewMode.GRID)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${view === ViewMode.GRID ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}><CalendarDays size={18} /> Schedule</button>
+            <button onClick={() => setView(ViewMode.HOSPITAL_VIEW)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${view === ViewMode.HOSPITAL_VIEW ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><Building2 size={18} /> Hospital View</button>
             {isAdmin && (
               <>
-                <button onClick={() => setView(ViewMode.STATS)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === ViewMode.STATS ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
-                  <BarChart3 size={18} /> Stats
-                </button>
-                <button onClick={() => setView(ViewMode.SETTINGS)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${view === ViewMode.SETTINGS ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
-                  <Settings size={18} /> Manage
-                </button>
+                <button onClick={() => setView(ViewMode.STATS)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${view === ViewMode.STATS ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><BarChart3 size={18} /> Stats</button>
+                <button onClick={() => setView(ViewMode.SETTINGS)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${view === ViewMode.SETTINGS ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><Settings size={18} /> Settings</button>
               </>
             )}
           </div>
-
-          {(view === ViewMode.GRID || view === ViewMode.HOSPITAL_VIEW) && (
-            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-               {view === ViewMode.GRID && (
-                  <div className="relative flex items-center bg-white rounded-lg shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
-                      <div className="pl-3 text-slate-400 pointer-events-none"><Search size={16}/></div>
-                      <input type="text" className="pl-2 pr-8 py-2 text-sm bg-transparent outline-none text-slate-700 w-full md:w-48 placeholder:text-slate-400" placeholder="Search staff..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                      {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100"><X size={14}/></button>}
-                  </div>
-               )}
-              <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 p-1 justify-between sm:justify-start">
-                <button onClick={() => changeWeek(-1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronLeft size={20} /></button>
-                <div className="px-4 font-semibold text-slate-800 w-48 text-center">{dateRangeStr}</div>
-                <button onClick={() => changeWeek(1)} className="p-2 hover:bg-slate-100 rounded-md text-slate-600"><ChevronRight size={20} /></button>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="flex-1 md:w-48 relative">
+                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                 <input type="text" className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm outline-none" placeholder="Filter staff..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
               </div>
-            </div>
-          )}
+              <div className="flex items-center bg-white rounded-lg border border-slate-200 p-1">
+                <button onClick={() => changeWeek(-1)} className="p-1.5 hover:bg-slate-50 rounded text-slate-500"><ChevronLeft size={18} /></button>
+                <span className="px-3 text-xs font-bold text-slate-700 min-w-[150px] text-center uppercase tracking-wider">{dateRangeStr}</span>
+                <button onClick={() => changeWeek(1)} className="p-1.5 hover:bg-slate-50 rounded text-slate-500"><ChevronRight size={18} /></button>
+              </div>
+          </div>
         </div>
         {renderContent()}
       </main>
 
+      {/* MODALS */}
       {showAiModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2"><Sparkles className="text-indigo-600"/> AI Scheduler</h2>
-            <p className="text-sm text-slate-500 mb-4">Generates plan for: {dateRangeStr}</p>
-            <textarea className="w-full h-32 p-3 border rounded-xl text-sm mb-4 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. Alice needs Tuesday off..." value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} />
-            {errorMsg && <div className="text-red-500 text-sm mb-4">{errorMsg}</div>}
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2"><Sparkles className="text-indigo-600"/> AI Smart Schedule</h2>
+            <textarea className="w-full h-32 p-3 border rounded-xl text-sm mb-4 bg-slate-50 outline-none" placeholder="Example: Bob is off on Wed. Ensure Charlie works at HO..." value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} />
+            {errorMsg && <p className="text-red-500 text-xs mb-4 font-bold">{errorMsg}</p>}
             <div className="flex gap-3">
-              <button onClick={() => setShowAiModal(false)} className="flex-1 py-2 border rounded-xl">Cancel</button>
-              <button onClick={handleGenerateAI} disabled={isGenerating} className="flex-1 py-2 bg-indigo-600 text-white rounded-xl flex justify-center items-center gap-2">{isGenerating ? <Loader2 className="animate-spin" size={18} /> : 'Generate'}</button>
+              <button onClick={() => setShowAiModal(false)} className="flex-1 py-2.5 bg-slate-100 rounded-xl font-bold">Cancel</button>
+              <button onClick={handleGenerateAI} disabled={isGenerating} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95">{isGenerating ? <Loader2 className="animate-spin" size={18} /> : 'Generate'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSetupModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8 relative">
+            <button onClick={() => setShowSetupModal(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full text-slate-400"><X size={24}/></button>
+            
+            <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-red-200">
+                    <AlertTriangle size={32} className="text-red-600" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">সঠিক Key ব্যবহার করুন!</h2>
+                <p className="text-slate-500 font-medium">আপনার ডাটাবেস বা এপিআই কী-তে সমস্যা রয়েছে।</p>
+            </div>
+
+            <div className="space-y-6">
+               <div className="p-5 bg-amber-50 rounded-2xl border-2 border-amber-100">
+                  <h3 className="font-bold text-amber-800 flex items-center gap-2 mb-3"><Key size={18}/> ১. সুপাবেস কী (Supabase Key):</h3>
+                  <p className="text-sm text-slate-700">আপনি যে Key ব্যবহার করছেন তা সঠিক হতে হবে। সুপাবেস ড্যাশবোর্ডের <strong>API</strong> সেকশন থেকে <strong>anon public key</strong> টি কপি করে আপনার <code className="bg-amber-100 px-1 rounded">.env</code> ফাইলে দিন।</p>
+               </div>
+
+               <div className="p-5 bg-blue-50 rounded-2xl border-2 border-blue-100">
+                  <h3 className="font-bold text-blue-800 flex items-center gap-2 mb-3"><Sparkles size={18}/> ২. জেমিনি এপিআই কী (Gemini Key):</h3>
+                  <p className="text-sm text-slate-700">জেমিনি এপিআই কী অবশ্যই <strong>AIza...</strong> দিয়ে শুরু হবে। এটি না থাকলে AI শিডিউল জেনারেট করতে পারবে না।</p>
+               </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-3">
+               <button onClick={() => fetchData()} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-2 transition-all active:scale-95">
+                  <RefreshCw size={20}/> ডাটাবেস রিকানেক্ট করুন
+               </button>
             </div>
           </div>
         </div>
       )}
 
       {showClearModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border-2 border-red-100">
-                <div className="flex flex-col items-center text-center mb-6">
-                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4"><AlertTriangle className="text-red-600" size={24} /></div>
-                    <h3 className="text-lg font-bold text-slate-900">Clear Weekly Schedule?</h3>
-                    <p className="text-sm text-slate-500 mt-2">This will remove all assignments for the current week. This action cannot be undone.</p>
-                </div>
-                <div className="mb-6">
-                    <label className="block text-xs font-semibold text-slate-700 uppercase mb-2">Enter Password to Confirm</label>
-                    <input type="password" autoFocus className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-slate-900" placeholder="••••••••" value={clearPassword} onChange={(e) => { setClearPassword(e.target.value); setClearError(''); }} />
-                    {clearError && <p className="text-red-500 text-xs mt-2 font-medium flex items-center gap-1"><X size={12}/> {clearError}</p>}
-                </div>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle className="text-red-600" size={24} /></div>
+                <h3 className="text-lg font-bold text-slate-900 mb-2">Clear This Week?</h3>
+                <input type="password" autoFocus className="w-full px-4 py-3 rounded-xl border border-slate-300 mb-4 outline-none" placeholder="Password (brrpl1234)" value={clearPassword} onChange={e => { setClearPassword(e.target.value); setClearError(''); }} />
+                {clearError && <p className="text-red-500 text-xs mb-4 font-bold">{clearError}</p>}
                 <div className="flex gap-3">
-                    <button onClick={() => setShowClearModal(false)} className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors">Cancel</button>
-                    <button onClick={handleClearRotaConfirm} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl shadow-lg shadow-red-200 transition-all transform active:scale-95">Confirm Clear</button>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {showSetupModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><Database className="text-indigo-600"/> Database Setup Guide</h2>
-                    <button onClick={() => setShowSetupModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
-                </div>
-                
-                <div className="space-y-6">
-                    <section>
-                        <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
-                            <Terminal size={16}/> 1. Fix Database Tables
-                        </h3>
-                        <p className="text-xs text-slate-600 mb-3">Copy and run this in your Supabase SQL Editor to ensure columns exist:</p>
-                        <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-indigo-500 relative">
-                            <pre className="whitespace-pre-wrap">
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS available_days text[] DEFAULT '{"{Mon,Tue,Wed,Thu,Fri,Sat,Sun}"}';
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS default_location_id text;
-                            </pre>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-sm font-bold text-slate-800 uppercase mb-2 flex items-center gap-2 text-indigo-600">
-                            <Info size={16}/> 2. Check Connection
-                        </h3>
-                        <p className="text-xs text-slate-600 mb-2">Your app is looking for these environment variables:</p>
-                        <div className="bg-slate-900 text-slate-50 p-4 rounded-xl font-mono text-[11px] leading-relaxed border-l-4 border-emerald-500">
-                            VITE_SUPABASE_URL<br/>
-                            VITE_SUPABASE_KEY<br/>
-                            API_KEY (for AI)
-                        </div>
-                    </section>
-                </div>
-
-                <div className="mt-8 flex justify-end">
-                    {/* Fixed onClick handler to use block syntax for multiple statements */}
-                    <button onClick={() => { setShowSetupModal(true); fetchData(); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2">
-                        <RefreshCw size={16}/> Refresh & Sync
-                    </button>
+                    <button onClick={() => setShowClearModal(false)} className="flex-1 py-2.5 bg-slate-100 rounded-xl font-bold">Cancel</button>
+                    <button onClick={async () => {
+                        if (clearPassword !== 'brrpl1234') { setClearError('Incorrect password'); return; }
+                        const weekDates = []; const d = new Date(currentWeekStart);
+                        for(let i=0; i<7; i++) { weekDates.push(d.toLocaleDateString('en-CA')); d.setDate(d.getDate() + 1); }
+                        setAssignments(prev => prev.filter(a => !weekDates.includes(a.date)));
+                        if (dbStatus === 'connected') {
+                          setIsSyncing(true);
+                          await supabase.from('assignments').delete().in('date', weekDates);
+                          setIsSyncing(false);
+                        }
+                        setShowClearModal(false); setClearPassword('');
+                    }} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold">Clear All</button>
                 </div>
             </div>
         </div>
