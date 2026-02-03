@@ -20,6 +20,7 @@ interface ErrorBoundaryState {
 }
 
 // Error Boundary to catch render crashes
+// Fix: Use the specifically imported Component to avoid resolution issues with React.Component namespace in strict TS environments
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState;
 
@@ -37,7 +38,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
-    // Explicitly destructure children from this.props to resolve the TS error
+    // DO: this.props is correctly identified via inheritance from Component<P, S>
     const { children } = this.props;
 
     if (this.state.hasError) {
