@@ -19,17 +19,15 @@ const getEnv = (key: string): string => {
 const supabaseUrl = getEnv('VITE_SUPABASE_URL').trim();
 const supabaseKey = getEnv('VITE_SUPABASE_KEY').trim();
 
-// Enhanced check: Supabase keys must be long JWT tokens (starting with ey...)
+// Check if keys are correctly formatted
 export const isSupabaseConfigured = 
   !!supabaseUrl && 
   !!supabaseKey && 
   supabaseUrl.startsWith('https://') &&
-  supabaseKey.startsWith('ey'); // Supabase anon keys are JWTs starting with 'ey'
+  supabaseKey.length > 50; // Supabase keys are long JWTs
 
-if (!isSupabaseConfigured && supabaseUrl) {
-  if (!supabaseKey.startsWith('ey')) {
-    console.error("INVALID SUPABASE KEY: The provided key doesn't look like a Supabase key. It should start with 'ey...'. Please check your Supabase Dashboard > Settings > API.");
-  }
+if (supabaseUrl && !isSupabaseConfigured) {
+    console.error("Supabase Config Issue: Check if VITE_SUPABASE_URL starts with https:// and VITE_SUPABASE_KEY is the long 'anon public' key.");
 }
 
 export const supabase = createClient(
