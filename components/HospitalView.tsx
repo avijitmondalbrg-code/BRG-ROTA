@@ -233,7 +233,7 @@ export const HospitalView: React.FC<HospitalViewProps> = ({
                                       {item.emp?.category}
                                     </span>
                                     <span className="text-[9px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
-                                      {item.shift?.name}
+                                      {item.shift?.name} {item.shift?.startTime && item.shift?.endTime && `(${item.shift.startTime} - ${item.shift.endTime})`}
                                     </span>
                                   </div>
                                </div>
@@ -272,4 +272,3 @@ export const HospitalView: React.FC<HospitalViewProps> = ({
     </div>
   );
 };
-
