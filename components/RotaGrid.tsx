@@ -169,7 +169,7 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                                         return (
                                             <div key={a.id} className="flex flex-col gap-1 text-xs p-2 bg-slate-50 rounded border border-slate-100">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="font-semibold">{s?.name}</span>
+                                                    <span className="font-semibold">{s?.name} {s?.startTime && s?.endTime && `(${s.startTime} - ${s.endTime})`}</span>
                                                     <button onClick={() => onRemove(a.id)} className="text-red-400 hover:text-red-600"><Trash2 size={12}/></button>
                                                 </div>
                                                 <div className="flex items-center gap-1 mt-1">
@@ -248,8 +248,13 @@ export const RotaGrid: React.FC<RotaGridProps> = ({
                                     <div key={a.id} className={`w-full text-[10px] p-1.5 rounded-md border shadow-sm mb-1 text-left relative overflow-hidden bg-white ${shiftColor.replace('bg-', 'border-').split(' ')[2] || 'border-slate-200'}`}>
                                         <div className={`absolute top-0 left-0 bottom-0 w-1 ${l?.color?.split(' ')[0] || 'bg-slate-400'}`}></div>
                                         <div className="font-bold pl-2 leading-tight">{s?.name}</div>
-                                        <div className="text-slate-500 pl-2 flex items-center gap-1 truncate mt-0.5" title={l?.name}>
-                                            <MapPin size={8} /> {l?.name || '...'}
+                                        {s?.startTime && s?.endTime && (
+                                            <div className="text-[9px] text-indigo-600/90 pl-2 font-semibold leading-none mt-0.5">
+                                                {s.startTime} - {s.endTime}
+                                            </div>
+                                        )}
+                                        <div className="text-slate-500 pl-2 flex items-center gap-1 truncate mt-1" title={l?.name}>
+                                            <MapPin size={8} className="shrink-0" /> {l?.name || '...'}
                                         </div>
                                     </div>
                                   );
